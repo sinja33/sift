@@ -38,79 +38,85 @@ enum Scripts {
     }
     """#
 
-    /// argv: [id, startSeconds]
+    // The commands below are AppleScript. Music rejects JavaScript `whose` references in
+    // commands like play and delete (error -1708), while AppleScript's `every track whose`
+    // resolves to concrete track references that Music accepts.
+
+    /// argv: [id, start second as a whole number]
     static let play = #"""
-    function run(argv) {
-      const music = Application('Music');
-      const found = music.libraryPlaylists[0].tracks.whose({ persistentID: argv[0] });
-      if (found.length === 0) return 'missing';
-      music.play(found[0]);
-      delay(0.4);
-      music.playerPosition = parseFloat(argv[1]);
-      return 'ok';
-    }
+    on run argv
+      set pid to item 1 of argv
+      set startAt to (item 2 of argv) as integer
+      tell application "Music"
+        set found to (every track of library playlist 1 whose persistent ID is pid)
+        if (count of found) is 0 then return "missing"
+        play (item 1 of found)
+        delay 0.4
+        set player position to startAt
+      end tell
+      return "ok"
+    end run
     """#
 
     static let pause = #"""
-    function run(argv) {
-      const music = Application('Music');
-      if (music.playerState() === 'playing') music.pause();
-      return 'ok';
-    }
+    tell application "Music"
+      if player state is playing then pause
+    end tell
     """#
 
-    /// argv: [JSON array of ids]. Returns how many tracks were deleted.
+    /// argv: ids. Returns how many tracks were deleted.
     static let delete = #"""
-    function run(argv) {
-      const music = Application('Music');
-      const tracks = music.libraryPlaylists[0].tracks;
-      const ids = JSON.parse(argv[0]);
-      let deleted = 0;
-      for (const id of ids) {
-        const found = tracks.whose({ persistentID: id });
-        if (found.length > 0) {
-          found[0].delete();
-          deleted++;
-        }
-      }
-      return String(deleted);
-    }
+    on run argv
+      set deleted to 0
+      tell application "Music"
+        repeat with pid in argv
+          set found to (every track of library playlist 1 whose persistent ID is (pid as text))
+          if (count of found) > 0 then
+            delete (item 1 of found)
+            set deleted to deleted + 1
+          end if
+        end repeat
+      end tell
+      return deleted as text
+    end run
     """#
 
-    /// argv: [playlist name, JSON array of ids]. Creates the playlist if needed.
+    /// argv: [playlist name, ids...]. Creates the playlist if needed.
     static let addToPlaylist = #"""
-    function run(argv) {
-      const music = Application('Music');
-      const name = argv[0];
-      const ids = JSON.parse(argv[1]);
-      if (music.userPlaylists.whose({ name: name }).length === 0) {
-        music.userPlaylists.push(music.UserPlaylist({ name: name }));
-      }
-      const playlist = music.userPlaylists.whose({ name: name })[0];
-      const tracks = music.libraryPlaylists[0].tracks;
-      for (const id of ids) {
-        const found = tracks.whose({ persistentID: id });
-        if (found.length > 0 && playlist.tracks.whose({ persistentID: id }).length === 0) {
-          music.duplicate(found[0], { to: playlist });
-        }
-      }
-      return 'ok';
-    }
+    on run argv
+      set listName to item 1 of argv
+      tell application "Music"
+        if not (exists user playlist listName) then make new user playlist with properties {name:listName}
+        set pl to user playlist listName
+        repeat with i from 2 to (count of argv)
+          set pid to item i of argv
+          set found to (every track of library playlist 1 whose persistent ID is pid)
+          if (count of found) > 0 then
+            if (count of (every track of pl whose persistent ID is pid)) is 0 then
+              duplicate (item 1 of found) to pl
+            end if
+          end if
+        end repeat
+      end tell
+      return "ok"
+    end run
     """#
 
-    /// argv: [playlist name, JSON array of ids]. Removes the songs from the playlist only.
+    /// argv: [playlist name, ids...]. Removes the songs from the playlist only.
     static let removeFromPlaylist = #"""
-    function run(argv) {
-      const music = Application('Music');
-      const lists = music.userPlaylists.whose({ name: argv[0] });
-      if (lists.length === 0) return 'ok';
-      const tracks = lists[0].tracks;
-      for (const id of JSON.parse(argv[1])) {
-        const found = tracks.whose({ persistentID: id });
-        if (found.length > 0) found[0].delete();
-      }
-      return 'ok';
-    }
+    on run argv
+      set listName to item 1 of argv
+      tell application "Music"
+        if not (exists user playlist listName) then return "ok"
+        set pl to user playlist listName
+        repeat with i from 2 to (count of argv)
+          set pid to item i of argv
+          set found to (every track of pl whose persistent ID is pid)
+          if (count of found) > 0 then delete (item 1 of found)
+        end repeat
+      end tell
+      return "ok"
+    end run
     """#
 
     /// AppleScript. argv: [id, output path]. Writes the first artwork to the path.

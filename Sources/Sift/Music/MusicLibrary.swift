@@ -34,25 +34,25 @@ struct MusicLibrary {
     }
 
     func play(id: String, from seconds: Double) async throws {
-        _ = try await Osa.run(Scripts.play, args: [id, String(seconds)])
+        _ = try await Osa.run(Scripts.play, language: .appleScript, args: [id, String(Int(seconds))])
     }
 
     func pause() async throws {
-        _ = try await Osa.run(Scripts.pause)
+        _ = try await Osa.run(Scripts.pause, language: .appleScript)
     }
 
     /// Deletes the songs from the library. Returns how many were deleted.
     func delete(ids: [String]) async throws -> Int {
-        let result = try await Osa.run(Scripts.delete, args: [Self.json(ids)])
+        let result = try await Osa.run(Scripts.delete, language: .appleScript, args: ids)
         return Int(result) ?? 0
     }
 
     func addToPlaylist(ids: [String], named name: String) async throws {
-        _ = try await Osa.run(Scripts.addToPlaylist, args: [name, Self.json(ids)])
+        _ = try await Osa.run(Scripts.addToPlaylist, language: .appleScript, args: [name] + ids)
     }
 
     func removeFromPlaylist(ids: [String], named name: String) async throws {
-        _ = try await Osa.run(Scripts.removeFromPlaylist, args: [name, Self.json(ids)])
+        _ = try await Osa.run(Scripts.removeFromPlaylist, language: .appleScript, args: [name] + ids)
     }
 
     /// Saves the song's artwork to a temporary file and returns its URL, or nil when the song has none.
@@ -72,10 +72,5 @@ struct MusicLibrary {
             return "Sift couldn't reach the Music app. Open Music and try again."
         }
         return text.isEmpty ? "Something went wrong talking to Music." : text
-    }
-
-    private static func json(_ ids: [String]) -> String {
-        let data = (try? JSONEncoder().encode(ids)) ?? Data("[]".utf8)
-        return String(decoding: data, as: UTF8.self)
     }
 }
