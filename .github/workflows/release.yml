@@ -1,0 +1,21 @@
+name: Release
+
+# Push a tag like v1.0.0 and this builds Sift and attaches the download to a GitHub release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the app and disk image
+        run: VERSION="${GITHUB_REF_NAME#v}" scripts/make-dmg.sh
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Sift ${GITHUB_REF_NAME#v}" --generate-notes

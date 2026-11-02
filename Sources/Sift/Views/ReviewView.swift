@@ -64,7 +64,7 @@ struct ReviewView: View {
                 .foregroundStyle(Theme.muted)
         }
         .padding(32)
-        .frame(maxWidth: 900)
+        .frame(maxWidth: 1100)
         .onAppear { selected = Set(songs.map(\.id)) }
         .confirmationDialog("Delete \(selected.count) songs from your library?", isPresented: $confirming) {
             Button("Delete", role: .destructive) {
@@ -97,75 +97,5 @@ struct ReviewView: View {
     private func detail(for song: Song) -> String {
         let plays = song.playCount == 1 ? "1 play" : "\(song.playCount) plays"
         return "\(song.artist) · \(plays) · added \(Format.monthYear(song.dateAdded))"
-    }
-}
-
-struct SecondChanceView: View {
-    @Environment(AppModel.self) private var model
-    @State private var items: [SecondChanceItem] = []
-    @State private var working = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("SECOND CHANCE ROUND").font(Theme.mono(12)).tracking(1).foregroundStyle(Theme.muted)
-                    Text(items.count == 1 ? "1 song" : "\(items.count) songs").font(Theme.display(34))
-                }
-                Spacer()
-                Button("Back") { model.stopClip(); model.screen = .home }
-                    .buttonStyle(.secondary)
-                Button("Apply choices") {
-                    Task {
-                        working = true
-                        await model.applySecondChance(items)
-                        working = false
-                    }
-                }
-                .buttonStyle(.primary)
-                .disabled(items.isEmpty || working)
-            }
-
-            Text("Sift suggests a choice based on whether you played each song since you added it. Click ▶ to hear a clip, and change any choice you disagree with.")
-                .foregroundStyle(Theme.muted)
-
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach($items) { $item in
-                        SongRow(song: item.song, detail: item.song.artist) {
-                            sincePill(item)
-                            Button { model.playClip(for: item.song) } label: { Image(systemName: "play.circle.fill").font(.title2) }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(Theme.brand)
-                                .help("Play a clip")
-                            Picker("Choice", selection: $item.choice) {
-                                ForEach(SecondChanceChoice.allCases) { Text($0.rawValue).tag($0) }
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            .frame(width: 240)
-                        }
-                        .padding(.horizontal, 14)
-                        Rectangle().fill(Theme.line).frame(height: 1)
-                    }
-                }
-            }
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.line))
-        }
-        .padding(32)
-        .frame(maxWidth: 900)
-        .onAppear { items = model.secondChanceRound() }
-    }
-
-    @ViewBuilder
-    private func sincePill(_ item: SecondChanceItem) -> some View {
-        if item.playsSince > 0 {
-            Pill("Played \(item.playsSince)× since", decision: .keep)
-        } else if item.skipsSince > 0 {
-            Pill("Skipped \(item.skipsSince)×")
-        } else {
-            Pill("Not played")
-        }
     }
 }

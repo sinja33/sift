@@ -19,6 +19,11 @@ struct SavedState: Codable {
     var removedCount = 0
     /// When true, swiping left keeps and swiping right deletes.
     var swapDirections = false
+    var clipsEnabled = true
+    var clipSeconds: Double = 15
+    var sessionSize = 20
+    /// "system", "light" or "dark".
+    var appearance = "system"
 
     init() {}
 
@@ -30,6 +35,10 @@ struct SavedState: Codable {
         pendingDelete = try c.decodeIfPresent([String].self, forKey: .pendingDelete) ?? []
         removedCount = try c.decodeIfPresent(Int.self, forKey: .removedCount) ?? 0
         swapDirections = try c.decodeIfPresent(Bool.self, forKey: .swapDirections) ?? false
+        clipsEnabled = try c.decodeIfPresent(Bool.self, forKey: .clipsEnabled) ?? true
+        clipSeconds = try c.decodeIfPresent(Double.self, forKey: .clipSeconds) ?? 15
+        sessionSize = try c.decodeIfPresent(Int.self, forKey: .sessionSize) ?? 20
+        appearance = try c.decodeIfPresent(String.self, forKey: .appearance) ?? "system"
     }
 }
 

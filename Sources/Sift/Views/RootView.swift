@@ -12,7 +12,6 @@ struct RootView: View {
                 case .home: HomeView()
                 case .session: SwipeView()
                 case .review: ReviewView()
-                case .secondChance: SecondChanceView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -23,13 +22,14 @@ struct RootView: View {
             }
         }
         .foregroundStyle(Theme.ink)
+        .preferredColorScheme(model.colorScheme)
         .animation(.easeOut(duration: 0.2), value: model.toast)
         .alert("Something went wrong", isPresented: errorShown) {
             Button("OK") { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
         }
-        .frame(minWidth: 860, minHeight: 640)
+        .frame(minWidth: 640, minHeight: 560)
         .task { await model.start() }
     }
 
@@ -44,7 +44,7 @@ struct WelcomeView: View {
     var body: some View {
         VStack(spacing: 20) {
             LogoMark(size: 96)
-            Text("Clean up your library, one song at a time")
+            Text("Clean up your library,\none song at a time")
                 .font(Theme.display(30))
                 .multilineTextAlignment(.center)
             Text("Sift reads your Music library to find the songs you never play.")
@@ -54,7 +54,8 @@ struct WelcomeView: View {
                 checkRow("Plays a short clip so you remember the song")
                 checkRow("Deletes only the songs you confirm")
             }
-            .panel()
+            .frame(width: 340, alignment: .leading)
+            .panel(padding: 22)
             Button {
                 Task { await model.connect() }
             } label: {

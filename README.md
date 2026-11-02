@@ -10,17 +10,21 @@ Second Chance songs go into a "Second Chance" playlist that syncs to your iPhone
 
 Nothing is deleted until you confirm on the review screen. Sift also saves a backup list (CSV) of deleted songs to `Documents/Sift Backups`.
 
-## What you need
+## Download
 
-- A Mac with macOS 14 (Sonoma) or newer
-- The Music app with your library in it (iCloud Music Library / Sync Library on, if you want deletes to reach your iPhone)
-- Apple's free developer tools: either **Xcode** from the App Store, or just the Command Line Tools (`xcode-select --install` in Terminal)
+1. Go to the [latest release](../../releases/latest) and download **Sift-x.y.z.dmg**.
+2. Open the file and drag **Sift** onto the **Applications** folder.
+3. Open Sift from Applications. The first time, macOS says it can't check the app for malware, because Sift isn't signed with a paid Apple developer certificate. This is normal for free apps like this one. To open it anyway:
+   - **macOS 15 and newer:** click **Done**, then open **System Settings → Privacy & Security**, scroll down to the message about Sift and click **Open Anyway**.
+   - **macOS 14:** right-click (or Control-click) Sift in Applications, choose **Open**, then click **Open**.
+   You only do this once.
+4. Click **Connect to Music**. macOS asks whether Sift may control Music. Click **OK**. If you click Don't Allow by mistake, turn it back on in System Settings → Privacy & Security → Automation → Sift → Music.
 
-You don't need a paid Apple Developer account.
+You need a Mac with macOS 14 (Sonoma) or newer and the Music app with your library in it. Turn on Sync Library in Music if you want deletes to reach your iPhone.
 
-## Build and run
+## Build it yourself
 
-In Terminal:
+You only need this if you want to change the code. It needs Apple's free developer tools: **Xcode** from the App Store, or just the Command Line Tools (`xcode-select --install` in Terminal).
 
 ```bash
 cd path/to/sift
@@ -28,11 +32,18 @@ bash scripts/build-app.sh
 open build/Sift.app
 ```
 
-The first time, macOS asks whether Sift may control Music. Click **OK**. If you click Don't Allow by mistake, turn it back on in System Settings → Privacy & Security → Automation → Sift → Music.
-
-You can drag `build/Sift.app` into your Applications folder to keep it.
-
 To work on the code in Xcode instead, open `Package.swift` in Xcode and press Run.
+
+## Publishing a release
+
+Tag a version and push the tag. GitHub builds the app for Apple Silicon and Intel Macs and attaches the `.dmg` and `.zip` to a new release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+To build the download on your own Mac instead, run `VERSION=1.0.0 bash scripts/make-dmg.sh`. The files land in `dist/`.
 
 ## Shortcuts on the swipe screen
 
@@ -42,13 +53,14 @@ To work on the code in Xcode instead, open `Package.swift` in Xcode and press Ru
 | → | Keep (or Delete) |
 | ↑ | Second Chance |
 | Space | Replay the clip |
+| S | Skip a song you can't play |
 | ⌘Z | Undo |
 
 You can also drag the card with the mouse or trackpad, or click the buttons under it.
 
 ## How songs are picked
 
-Each session shows the 20 songs most likely to be clutter. Never-played songs, songs you haven't played in a long time, and often-skipped songs come first. Sift leaves out:
+Each session shows 20 songs by default (you can change it in Settings) most likely to be clutter. Never-played songs, songs you haven't played in a long time, and often-skipped songs come first. Sift leaves out:
 
 - songs added in the last 30 days
 - songs you kept in the last 6 months
@@ -70,4 +82,7 @@ Sources/Sift/
   Views/                 Screens and components (colours in Theme.swift)
 Support/                 Info.plist and app icon
 scripts/build-app.sh     Builds build/Sift.app
+scripts/make-dmg.sh      Builds the downloadable .dmg and .zip into dist/
+scripts/make-icon.sh     Redraws the app icon from Views/LogoDrawing.swift
+.github/workflows/       Builds a release when you push a version tag
 ```

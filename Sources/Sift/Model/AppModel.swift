@@ -55,7 +55,8 @@ struct SecondChanceItem: Identifiable {
 @MainActor
 @Observable
 final class AppModel {
-    enum Screen { case welcome, home, session, review, secondChance }
+    enum Screen { case welcome, home, session, review }
+    enum SessionKind { case sift, secondChance }
 
     var screen: Screen = .welcome
     var isLoading = false
@@ -65,17 +66,24 @@ final class AppModel {
     var songs: [Song] = []
     var state: SavedState
     var filter: QueueFilter = .smart
-    let sessionSize = 20
+    var sessionSize: Int { state.sessionSize }
 
     // Current session
+    var sessionKind: SessionKind = .sift
+    var chanceItems: [String: SecondChanceItem] = [:]
+    var chanceChoices: [String: SecondChanceChoice] = [:]
     var queue: [Song] = []
     var index = 0
     var history: [(song: Song, decision: Decision)] = []
 
     // Clip playback
-    var clipsEnabled = true
+    var clipsEnabled: Bool { state.clipsEnabled }
     var clipStartedAt: Date?
-    let clipLength: Double = 15
+    /// True while Music is loading or downloading the song, before the clip actually starts.
+    var clipLoading = false
+    /// True when Music could not play the song at all.
+    var clipUnplayable = false
+    var clipLength: Double { state.clipSeconds }
 
     let secondChanceWait: TimeInterval = 21 * 86_400
 
@@ -153,9 +161,38 @@ final class AppModel {
         save()
     }
 
+    func setClipSeconds(_ value: Double) {
+        state.clipSeconds = value
+        save()
+    }
+
+    func setAppearance(_ value: String) {
+        state.appearance = value
+        save()
+    }
+
+    var colorScheme: ColorScheme? {
+        switch state.appearance {
+        case "light": .light
+        case "dark": .dark
+        default: nil
+        }
+    }
+
+    func setSessionSize(_ value: Int) {
+        state.sessionSize = value
+        save()
+    }
+
+    /// The name of a decision on the current screen. Second Chance rounds call it "Ask again".
+    func label(for decision: Decision) -> String {
+        sessionKind == .secondChance && decision == .secondChance ? "Ask again" : decision.label
+    }
+
     // MARK: Session
 
     func startSession() {
+        sessionKind = .sift
         queue = Scoring.queue(from: songs, state: state, filter: filter, limit: sessionSize)
         index = 0
         history = []
@@ -166,11 +203,30 @@ final class AppModel {
 
     func endSession() {
         stopClip()
+        sessionKind = .sift
         screen = .home
+    }
+
+    /// Moves past the current song without deciding anything. It can come up again in a later session.
+    func skipCurrent() {
+        guard current != nil else { return }
+        index += 1
+        playClipForCurrent()
     }
 
     func decide(_ decision: Decision) {
         guard let song = current else { return }
+        if sessionKind == .secondChance {
+            switch decision {
+            case .delete: chanceChoices[song.id] = .delete
+            case .keep: chanceChoices[song.id] = .keep
+            case .secondChance: chanceChoices[song.id] = .askAgain
+            }
+            history.append((song, decision))
+            index += 1
+            playClipForCurrent()
+            return
+        }
         switch decision {
         case .delete:
             if !state.pendingDelete.contains(song.id) { state.pendingDelete.append(song.id) }
@@ -188,6 +244,12 @@ final class AppModel {
     func undo() {
         guard let last = history.popLast() else { return }
         let id = last.song.id
+        if sessionKind == .secondChance {
+            chanceChoices[id] = nil
+            index = queue.firstIndex { $0.id == id } ?? max(0, index - 1)
+            playClipForCurrent()
+            return
+        }
         switch last.decision {
         case .delete:
             state.pendingDelete.removeAll { $0 == id }
@@ -197,7 +259,7 @@ final class AppModel {
             state.secondChance[id] = nil
             Task { await perform { try await self.music.removeFromPlaylist(ids: [id], named: MusicLibrary.secondChancePlaylist) } }
         }
-        index = max(0, index - 1)
+        index = queue.firstIndex { $0.id == id } ?? max(0, index - 1)
         save()
         playClipForCurrent()
     }
@@ -223,17 +285,26 @@ final class AppModel {
     func playClip(for song: Song) {
         clipTask?.cancel()
         clipStartedAt = nil
+        clipUnplayable = false
+        clipLoading = clipsEnabled
         guard clipsEnabled else { return }
         clipTask = Task {
             do {
                 try await music.play(id: song.id, from: song.clipStart)
                 try Task.checkCancellation()
+                clipLoading = false
                 clipStartedAt = Date()
                 try await Task.sleep(for: .seconds(clipLength))
                 clipStartedAt = nil
                 try await music.pause()
             } catch is CancellationError {
+            } catch let error as OsaError where error.message.hasPrefix("Music couldn't play") {
+                guard !Task.isCancelled else { return }
+                clipLoading = false
+                clipUnplayable = true
             } catch {
+                guard !Task.isCancelled else { return }
+                clipLoading = false
                 errorMessage = MusicLibrary.friendlyMessage(for: error)
             }
         }
@@ -243,12 +314,15 @@ final class AppModel {
         clipTask?.cancel()
         clipTask = nil
         clipStartedAt = nil
+        clipLoading = false
+        clipUnplayable = false
         Task { try? await music.pause() }
     }
 
     func setClipsEnabled(_ enabled: Bool) {
-        clipsEnabled = enabled
-        if enabled { playClipForCurrent() } else { stopClip() }
+        state.clipsEnabled = enabled
+        save()
+        if !enabled { stopClip() } else if screen == .session { playClipForCurrent() }
     }
 
     func artwork(for song: Song) async -> NSImage? {
@@ -285,9 +359,37 @@ final class AppModel {
 
     // MARK: Second Chance
 
+    /// Starts a swipe-style round over the songs whose waiting time is up.
     func openSecondChance() async {
         await connect()
-        screen = .secondChance
+        let items = secondChanceRound()
+        guard !items.isEmpty else {
+            showToast("No Second Chance songs are due yet")
+            return
+        }
+        sessionKind = .secondChance
+        chanceItems = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        chanceChoices = [:]
+        queue = items.map(\.song)
+        index = 0
+        history = []
+        screen = .session
+        playClipForCurrent()
+    }
+
+    /// How many plays a Second Chance song got since it was added to the playlist.
+    func chanceInfo(for song: Song) -> (playsSince: Int, skipsSince: Int, added: Date?)? {
+        guard sessionKind == .secondChance, let item = chanceItems[song.id] else { return nil }
+        return (item.playsSince, item.skipsSince, state.secondChance[song.id]?.added)
+    }
+
+    func finishSecondChanceRound() async {
+        let items = queue.compactMap { song -> SecondChanceItem? in
+            guard var item = chanceItems[song.id] else { return nil }
+            item.choice = chanceChoices[song.id] ?? .askAgain
+            return item
+        }
+        await applySecondChance(items)
     }
 
     /// Songs whose waiting time is up, with a suggested choice for each.
@@ -332,6 +434,7 @@ final class AppModel {
             }
         }
         save()
+        sessionKind = .sift
         if !leaving.isEmpty {
             await perform { try await self.music.removeFromPlaylist(ids: leaving, named: MusicLibrary.secondChancePlaylist) }
         }

@@ -67,10 +67,10 @@ extension ButtonStyle where Self == CapsuleButtonStyle {
 
 extension View {
     /// The bordered white box used for panels and lists.
-    func panel(padding: CGFloat = 18) -> some View {
+    func panel(padding: CGFloat = 18, radius: CGFloat = 20) -> some View {
         self
             .padding(padding)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.line))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(Theme.line))
     }
 }

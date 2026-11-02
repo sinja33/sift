@@ -34,7 +34,8 @@ struct MusicLibrary {
     }
 
     func play(id: String, from seconds: Double) async throws {
-        _ = try await Osa.run(Scripts.play, language: .appleScript, args: [id, String(Int(seconds))])
+        let result = try await Osa.run(Scripts.play, language: .appleScript, args: [id, String(Int(seconds))])
+        if result == "unplayable" { throw OsaError(message: "Music couldn't play this song. It may not be downloaded or available right now.") }
     }
 
     func pause() async throws {

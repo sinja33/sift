@@ -7,7 +7,7 @@
 	<key>CFBundleDisplayName</key>
 	<string>Sift</string>
 	<key>CFBundleIdentifier</key>
-	<string>local.sift.Sift</string>
+	<string>io.github.sinja33.sift</string>
 	<key>CFBundleExecutable</key>
 	<string>Sift</string>
 	<key>CFBundlePackageType</key>

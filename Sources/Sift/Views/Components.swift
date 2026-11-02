@@ -1,35 +1,16 @@
 import SwiftUI
 
-/// The fanned stack of cards from the design guide: amber and red cards behind a record sleeve.
+/// The Sift mark. See LogoDrawing for how it is drawn.
 struct LogoMark: View {
     var size: CGFloat = 96
 
     var body: some View {
-        let s = size / 120
-        let vinyl = Color.hex(0x15172A)
-        ZStack {
-            RoundedRectangle(cornerRadius: 28 * s, style: .continuous)
-                .fill(LinearGradient(colors: [.hex(0x5465FF), .hex(0x2433C7)], startPoint: .topLeading, endPoint: .bottomTrailing))
-            RoundedRectangle(cornerRadius: 9 * s, style: .continuous)
-                .fill(Color.hex(0xE39E12))
-                .frame(width: 50 * s, height: 66 * s)
-                .rotationEffect(.degrees(-16))
-            RoundedRectangle(cornerRadius: 9 * s, style: .continuous)
-                .fill(Color.hex(0xE0424A))
-                .frame(width: 50 * s, height: 66 * s)
-                .rotationEffect(.degrees(14))
-            ZStack {
-                RoundedRectangle(cornerRadius: 10 * s, style: .continuous)
-                    .fill(.white)
-                    .frame(width: 54 * s, height: 72 * s)
-                Circle().fill(vinyl).frame(width: 34 * s, height: 34 * s).offset(y: -8 * s)
-                Circle().fill(Color.hex(0x3B4CF5)).frame(width: 12 * s, height: 12 * s).offset(y: -8 * s)
-                Capsule().fill(vinyl.opacity(0.85)).frame(width: 36 * s, height: 5 * s).offset(y: 19.5 * s)
-                Capsule().fill(vinyl.opacity(0.35)).frame(width: 22 * s, height: 4 * s).offset(x: -7 * s, y: 27 * s)
-            }
-            .offset(y: -2 * s)
+        Canvas { context, canvasSize in
+            LogoDrawing.draw(in: &context, rect: CGRect(origin: .zero, size: canvasSize))
         }
         .frame(width: size, height: size)
+        .shadow(color: Color.hex(0x3B4CF5).opacity(size > 60 ? 0.28 : 0), radius: 12, y: 8)
+        .accessibilityLabel("Sift")
     }
 }
 
@@ -92,19 +73,113 @@ struct ActionButton: View {
     }
 }
 
+/// Share of the library played recently. Spins while the library is loading, then fills to the value.
 struct HealthRing: View {
     let value: Double
+    var loading = false
+
+    @State private var shown: Double = 0
+    @State private var spinning = false
+
+    private let line: CGFloat = 14
+    private var target: Double { loading ? 0 : min(1, max(0, value)) }
 
     var body: some View {
         ZStack {
-            Circle().stroke(Theme.surface2, lineWidth: 12)
             Circle()
-                .trim(from: 0, to: max(0.001, value))
-                .stroke(Theme.brand, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            Text("\(Int((value * 100).rounded()))%").font(Theme.display(26))
+                .fill(Theme.surface)
+                .shadow(color: Theme.brand.opacity(0.12), radius: 14, y: 6)
+            Circle().stroke(Theme.surface2, lineWidth: line).padding(line / 2 + 6)
+
+            if loading {
+                arc(to: 0.26)
+                    .rotationEffect(.degrees(spinning ? 360 : 0))
+                    .animation(.linear(duration: 1.1).repeatForever(autoreverses: false), value: spinning)
+            } else {
+                arc(to: max(0.001, shown))
+                // A small dot at the end of the arc.
+                Circle()
+                    .fill(.white)
+                    .frame(width: 6, height: 6)
+                    .padding(.top, 6 + line / 2 - 3)
+                    .frame(width: 156, height: 156, alignment: .top)
+                    .rotationEffect(.degrees(360 * shown))
+                    .opacity(shown > 0.02 ? 1 : 0)
+            }
+
+            VStack(spacing: 3) {
+                if loading {
+                    Text("Reading").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                    Text("library…").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 1) {
+                        CountText(value: shown * 100).font(Theme.display(40))
+                        Text("%").font(Theme.display(20)).foregroundStyle(Theme.muted)
+                    }
+                    Text("PLAYED").font(.system(size: 10, weight: .semibold)).tracking(1).foregroundStyle(Theme.muted)
+                }
+            }
         }
-        .frame(width: 120, height: 120)
+        .frame(width: 156, height: 156)
+        .onChange(of: target, initial: true) {
+            withAnimation(.easeOut(duration: 1.2)) { shown = target }
+        }
+        .onChange(of: loading, initial: true) { spinning = loading }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(loading ? "Reading library" : "\(Int((value * 100).rounded())) percent of your library played recently")
+    }
+
+    /// The coloured arc, starting at the top.
+    private func arc(to end: Double) -> some View {
+        Circle()
+            .trim(from: 0, to: end)
+            .stroke(
+                AngularGradient(
+                    colors: [Color.hex(0x9AA6FF), Theme.brand, Color.hex(0x5A3FE0)],
+                    center: .center, startAngle: .degrees(0), endAngle: .degrees(360 * max(end, 0.05))),
+                style: StrokeStyle(lineWidth: line, lineCap: .round))
+            .rotationEffect(.degrees(-90))
+            .padding(line / 2 + 6)
+    }
+}
+
+/// A number that counts up smoothly when its value is animated.
+private struct CountText: View, Animatable {
+    var value: Double
+    var animatableData: Double {
+        get { value }
+        set { value = newValue }
+    }
+
+    var body: some View { Text("\(Int(value.rounded()))") }
+}
+
+/// A rounded segmented control.
+struct PillPicker<Option: Hashable>: View {
+    let options: [Option]
+    @Binding var selection: Option
+    let label: (Option) -> String
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(options, id: \.self) { option in
+                let on = option == selection
+                Button { selection = option } label: {
+                    Text(label(option))
+                        .font(.system(size: 13, weight: on ? .semibold : .regular))
+                        .foregroundStyle(on ? Theme.ink : Theme.muted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background {
+                            if on { Capsule().fill(Theme.surface).shadow(color: .black.opacity(0.10), radius: 1.5, y: 1) }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(Theme.surface2, in: Capsule())
     }
 }
 

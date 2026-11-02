@@ -50,9 +50,35 @@ enum Scripts {
       tell application "Music"
         set found to (every track of library playlist 1 whose persistent ID is pid)
         if (count of found) is 0 then return "missing"
-        play (item 1 of found)
-        delay 0.4
-        set player position to startAt
+        set t to item 1 of found
+        play t
+        -- Songs that are not downloaded yet take a while to start, so wait for this one in
+        -- particular: the player may still be on the previous song until then.
+        set started to false
+        repeat 120 times
+          try
+            if player state is playing and (name of current track) is (name of t) then
+              set started to true
+              exit repeat
+            end if
+          end try
+          delay 0.25
+        end repeat
+        if not started then return "unplayable"
+        if startAt > 0 then
+          -- Seeking fails (-10006) until the track has actually started, and past its end.
+          set maxAt to (duration of t) - 2
+          if startAt > maxAt then set startAt to maxAt as integer
+          if startAt < 0 then set startAt to 0
+          repeat 8 times
+            try
+              set player position to startAt
+              exit repeat
+            on error
+              delay 0.25
+            end try
+          end repeat
+        end if
       end tell
       return "ok"
     end run
