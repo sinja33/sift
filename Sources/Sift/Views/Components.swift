@@ -300,24 +300,210 @@ struct SongRow<Trailing: View>: View {
     }
 }
 
-/// Five white bars that bounce like a level meter. Shown on the cover while a song loads.
-struct EqualizerView: View {
-    var height: CGFloat = 52
+/// A ring with a bright arc chasing around it. Looks like waiting, not like music playing.
+struct LoadingRing: View {
+    var size: CGFloat = 56
 
     var body: some View {
         TimelineView(.animation) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            HStack(alignment: .bottom, spacing: 6) {
-                ForEach(0..<5, id: \.self) { i in
-                    // Each bar runs on its own phase and speed so they never move in step.
-                    let wave = (sin(t * (5.2 + Double(i) * 0.7) + Double(i) * 1.9) + 1) / 2
-                    Capsule()
-                        .fill(.white)
-                        .frame(width: 9, height: height * (0.22 + 0.78 * wave))
-                }
+            ZStack {
+                Circle().stroke(.white.opacity(0.22), lineWidth: 5)
+                Circle()
+                    .trim(from: 0, to: 0.28)
+                    .stroke(.white, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .rotationEffect(.degrees(t * 320))
             }
-            .frame(height: height, alignment: .bottom)
+            .frame(width: size, height: size)
         }
         .accessibilityLabel("Loading")
+    }
+}
+
+/// The artist's photo in a circle, with their initial on a colored tile until it loads or when none is found.
+struct ArtistAvatar: View {
+    let artist: String
+    var size: CGFloat = 72
+
+    @Environment(AppModel.self) private var model
+    @State private var image: NSImage?
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(nsImage: image).resizable().scaledToFill()
+            } else {
+                gradient
+                Text(String(artist.prefix(1)).uppercased()).font(Theme.display(size * 0.42)).foregroundStyle(.white)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Theme.line))
+        .task(id: artist) {
+            image = nil
+            image = await model.artistImage(for: artist)
+        }
+    }
+
+    private var gradient: LinearGradient {
+        let seed = artist.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFFFF }
+        let hue = Double(seed % 360) / 360
+        return LinearGradient(colors: [
+            Color(hue: hue, saturation: 0.6, brightness: 0.95),
+            Color(hue: (hue + 0.18).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.45)
+        ], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+}
+
+/// A mascot, a title and a line of explanation, for screens with nothing to show or something that went wrong.
+struct EmptyState<Actions: View>: View {
+    let mood: Mascot.Mood
+    let title: String
+    let message: String
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Mascot(mood: mood, size: 120, animated: true)
+            Text(title).font(Theme.display(24)).multilineTextAlignment(.center)
+            Text(message)
+                .foregroundStyle(Theme.muted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) { actions }.padding(.top, 6)
+        }
+        .frame(maxWidth: 420)
+        .padding(.vertical, 28)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// The indigo circle behind all three Home icons.
+private func drawIconBackdrop(_ context: inout GraphicsContext, _ canvas: CGSize) {
+    context.fill(Path(ellipseIn: CGRect(origin: .zero, size: canvas)), with: .linearGradient(
+        Gradient(colors: [Color.hex(0x6F7DFF), Color.hex(0x3B4CF5)]), startPoint: .zero, endPoint: CGPoint(x: canvas.width, y: canvas.height)))
+}
+
+/// The Second Chance mark: the logo's music note inside a "try again" arrow, on a gold circle.
+struct SecondChanceIcon: View {
+    var size: CGFloat = 72
+
+    var body: some View {
+        Canvas { context, canvas in
+            let s = canvas.width / 72
+            let c = CGPoint(x: 36 * s, y: 36 * s)
+            let r = 23 * s
+            drawIconBackdrop(&context, canvas)
+            // An open ring that runs counterclockwise from the upper left round to the upper right, with an arrowhead at the end.
+            let start = Angle.degrees(-40), end = Angle.degrees(230)
+            var ring = Path()
+            ring.addArc(center: c, radius: r, startAngle: end, endAngle: start, clockwise: true)
+            context.stroke(ring, with: .color(.white), style: StrokeStyle(lineWidth: 4.2 * s, lineCap: .round))
+            let a = CGFloat(start.radians)
+            let tip = CGPoint(x: c.x + r * cos(a), y: c.y + r * sin(a))
+            let dir = CGPoint(x: sin(a), y: -cos(a))
+            let side = CGPoint(x: -dir.y, y: dir.x)
+            var head = Path()
+            head.move(to: CGPoint(x: tip.x - 9 * s * dir.x + 6.5 * s * side.x, y: tip.y - 9 * s * dir.y + 6.5 * s * side.y))
+            head.addLine(to: tip)
+            head.addLine(to: CGPoint(x: tip.x - 9 * s * dir.x - 6.5 * s * side.x, y: tip.y - 9 * s * dir.y - 6.5 * s * side.y))
+            context.stroke(head, with: .color(.white), style: StrokeStyle(lineWidth: 4.2 * s, lineCap: .round, lineJoin: .round))
+            // The note, centred on the circle.
+            let box = LogoDrawing.note.boundingRect
+            let scale = 0.8 * s
+            let toCenter = CGAffineTransform(translationX: c.x, y: c.y).scaledBy(x: scale, y: scale)
+                .translatedBy(x: -box.midX, y: -box.midY)
+            context.fill(LogoDrawing.note.applying(toCenter), with: .color(.white))
+        }
+        .frame(width: size, height: size)
+        .overlay(Circle().stroke(Theme.line))
+        .accessibilityLabel("Second Chance")
+    }
+}
+
+/// A card being swiped, with the swipe arc above it, on an indigo circle.
+struct SwipeIcon: View {
+    var size: CGFloat = 72
+
+    var body: some View {
+        Canvas { context, canvas in
+            let s = canvas.width / 72
+            drawIconBackdrop(&context, canvas)
+            func card(at center: CGPoint, degrees: Double, fill: Color) {
+                let rect = CGRect(x: -11 * s, y: -15 * s, width: 22 * s, height: 30 * s)
+                let t = CGAffineTransform(translationX: center.x, y: center.y).rotated(by: degrees * .pi / 180)
+                context.fill(Path(roundedRect: rect, cornerRadius: 5 * s, style: .continuous).applying(t), with: .color(fill))
+            }
+            card(at: CGPoint(x: 27 * s, y: 43 * s), degrees: -14, fill: .white.opacity(0.45))
+            card(at: CGPoint(x: 42 * s, y: 43 * s), degrees: 12, fill: .white)
+            // The swipe: an arc over the cards, ending in an arrowhead on the right.
+            var arc = Path()
+            arc.move(to: CGPoint(x: 18 * s, y: 22 * s))
+            arc.addQuadCurve(to: CGPoint(x: 52 * s, y: 20 * s), control: CGPoint(x: 35 * s, y: 8 * s))
+            context.stroke(arc, with: .color(.white), style: StrokeStyle(lineWidth: 3.6 * s, lineCap: .round))
+            var head = Path()
+            head.move(to: CGPoint(x: 46 * s, y: 13 * s)); head.addLine(to: CGPoint(x: 53 * s, y: 20.5 * s)); head.addLine(to: CGPoint(x: 44 * s, y: 25 * s))
+            context.stroke(head, with: .color(.white), style: StrokeStyle(lineWidth: 3.6 * s, lineCap: .round, lineJoin: .round))
+        }
+        .frame(width: size, height: size)
+        .overlay(Circle().stroke(Theme.line))
+        .accessibilityLabel("Swipe session")
+    }
+}
+
+/// A person with a small music note, for the artist spotlight.
+struct ArtistIcon: View {
+    var size: CGFloat = 72
+
+    var body: some View {
+        Canvas { context, canvas in
+            let s = canvas.width / 72
+            drawIconBackdrop(&context, canvas)
+            context.fill(Path(ellipseIn: CGRect(x: 27 * s, y: 15 * s, width: 18 * s, height: 18 * s)), with: .color(.white))
+            // The shoulders run off the bottom of the circle.
+            var shoulders = context
+            shoulders.clip(to: Path(ellipseIn: CGRect(origin: .zero, size: canvas)))
+            var body = Path()
+            body.move(to: CGPoint(x: 15 * s, y: 74 * s))
+            body.addLine(to: CGPoint(x: 15 * s, y: 56 * s))
+            body.addCurve(to: CGPoint(x: 36 * s, y: 38 * s), control1: CGPoint(x: 15 * s, y: 44 * s), control2: CGPoint(x: 23 * s, y: 38 * s))
+            body.addCurve(to: CGPoint(x: 57 * s, y: 56 * s), control1: CGPoint(x: 49 * s, y: 38 * s), control2: CGPoint(x: 57 * s, y: 44 * s))
+            body.addLine(to: CGPoint(x: 57 * s, y: 74 * s))
+            body.closeSubpath()
+            shoulders.fill(body, with: .color(.white))
+            let note = CGAffineTransform(translationX: 54 * s, y: 17 * s).scaledBy(x: 0.6 * s, y: 0.6 * s).translatedBy(x: -12, y: -12)
+            context.fill(LogoDrawing.note.applying(note), with: .color(.white))
+        }
+        .frame(width: size, height: size)
+        .overlay(Circle().stroke(Theme.line))
+        .accessibilityLabel("Artist")
+    }
+}
+
+/// A bin, for songs waiting to be deleted.
+struct DeleteIcon: View {
+    var size: CGFloat = 72
+
+    var body: some View {
+        Canvas { context, canvas in
+            let s = canvas.width / 72
+            drawIconBackdrop(&context, canvas)
+            func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * s, y: y * s) }
+            context.fill(Path(roundedRect: CGRect(x: 31 * s, y: 17 * s, width: 10 * s, height: 6 * s), cornerRadius: 2 * s), with: .color(.white))
+            context.fill(Path(roundedRect: CGRect(x: 20 * s, y: 22 * s, width: 32 * s, height: 5 * s), cornerRadius: 2.5 * s), with: .color(.white))
+            var bin = Path()
+            bin.move(to: pt(24, 30)); bin.addLine(to: pt(48, 30)); bin.addLine(to: pt(46.2, 53))
+            bin.addQuadCurve(to: pt(43.4, 56), control: pt(46, 56)); bin.addLine(to: pt(28.6, 56))
+            bin.addQuadCurve(to: pt(25.8, 53), control: pt(26, 56)); bin.closeSubpath()
+            context.fill(bin, with: .color(.white))
+            for x: CGFloat in [31.5, 36, 40.5] {
+                var slit = Path(); slit.move(to: pt(x, 36)); slit.addLine(to: pt(x, 50))
+                context.stroke(slit, with: .color(Color.hex(0x4F5EFA)), style: StrokeStyle(lineWidth: 2.4 * s, lineCap: .round))
+            }
+        }
+        .frame(width: size, height: size)
+        .overlay(Circle().stroke(Theme.line))
+        .accessibilityLabel("Ready to delete")
     }
 }

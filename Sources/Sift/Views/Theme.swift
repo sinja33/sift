@@ -3,6 +3,8 @@ import SwiftUI
 
 /// Colours and fonts from the Sift design guide. Each colour has a light and a dark value.
 enum Theme {
+    /// Fill of purple buttons: a little deeper than the brand color so white text reads well in both modes.
+    static let action = Color.dynamic(light: 0x2D3BD0, dark: 0x4452E0)
     static let brand = Color.dynamic(light: 0x3B4CF5, dark: 0x7381FF)
     static let keep = Color.dynamic(light: 0x12A06B, dark: 0x2FC68C)
     static let delete = Color.dynamic(light: 0xE0424A, dark: 0xFF6A6F)
@@ -90,9 +92,9 @@ struct CapsuleButtonStyle: ButtonStyle {
 }
 
 extension ButtonStyle where Self == CapsuleButtonStyle {
-    static var primary: CapsuleButtonStyle { CapsuleButtonStyle(fill: Theme.brand, text: Theme.onAction) }
+    static var primary: CapsuleButtonStyle { CapsuleButtonStyle(fill: Theme.action, text: .white) }
     static var secondary: CapsuleButtonStyle { CapsuleButtonStyle(fill: Theme.surface2, text: Theme.ink) }
-    static var danger: CapsuleButtonStyle { CapsuleButtonStyle(fill: Theme.delete, text: Theme.onAction) }
+    static var danger: CapsuleButtonStyle { CapsuleButtonStyle(fill: Theme.delete, text: .white) }
 }
 
 extension View {

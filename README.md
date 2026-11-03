@@ -55,6 +55,7 @@ To build the download on your own Mac instead, run `VERSION=1.0.0 bash scripts/m
 | Space | Replay the clip |
 | S | Skip a song you can't play |
 | ⌘Z | Undo |
+| Return / Esc | Accept or skip an artist stop |
 
 You can also drag the card with the mouse or trackpad, or click the buttons under it.
 
@@ -66,9 +67,23 @@ Each session shows 20 songs by default (you can change it in Settings) most like
 - songs you kept in the last 6 months
 - songs already in Second Chance or waiting to be deleted
 
-## Artist spotlight
+## Artist stop and spotlight
+
+After you delete three songs by one artist in a session, Sift offers to go through the rest of their songs right away, then carries on with your session.
 
 The Home screen offers an artist you rarely play, and you can go through all of their songs in one session. Music has no artist pictures, so Sift looks up the photo on Deezer's public search. Only the artist's name is sent, nothing else about your library. Photos are cached in `~/Library/Caches/Sift`, and a letter tile is shown when none is found.
+
+## Covers, updates, sound and privacy
+
+Sift never uploads your library. It goes online in three small ways, and only to look things up:
+
+- **Artist photos** from Deezer, sending only the artist's name (see above).
+- **Missing album covers** from Apple's public iTunes Search, sending only the artist and song title. Covers are cached in `~/Library/Caches/Sift`.
+- **Update check**: once per launch Sift asks GitHub for the newest release number and shows a banner when there is one. Turn it off in Settings.
+
+If you are offline, Sift still works. Covers and photos just show a placeholder.
+
+Sounds and trackpad taps on each swipe can be turned off in Settings.
 
 ## How it works
 

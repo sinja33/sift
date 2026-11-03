@@ -4,6 +4,8 @@ struct SwipeView: View {
     @Environment(AppModel.self) private var model
     @State private var drag: CGSize = .zero
     @State private var leaving = false
+    /// True once the dragged card is far enough that letting go decides it.
+    @State private var pastThreshold = false
     @FocusState private var focused: Bool
 
     private let threshold: CGFloat = 110
@@ -28,7 +30,10 @@ struct SwipeView: View {
                 HStack(alignment: .top, spacing: 28) {
                     if large { sidebar.frame(width: columnWidth) }
                     VStack(spacing: 22) {
-                        if let song = model.current {
+                        if let stop = model.artistStop {
+                            artistStopCard(stop)
+                                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        } else if let song = model.current {
                             deck(song: song, scale: scale)
                             HStack(spacing: 18) {
                                 ActionButton(decision: model.leftDecision) { commit(model.leftDecision) }
@@ -54,6 +59,14 @@ struct SwipeView: View {
         .onKeyPress(.leftArrow) { commit(model.leftDecision); return .handled }
         .onKeyPress(.rightArrow) { commit(model.rightDecision); return .handled }
         .onKeyPress(.upArrow) { commit(.secondChance); return .handled }
+        .onKeyPress(.return) {
+            guard model.artistStop != nil else { return .ignored }
+            model.acceptArtistStop(); return .handled
+        }
+        .onKeyPress(.escape) {
+            guard model.artistStop != nil else { return .ignored }
+            model.declineArtistStop(); return .handled
+        }
         .onKeyPress(.space) { model.playClipForCurrent(); return .handled }
         .onKeyPress("s") { model.skipCurrent(); return .handled }
         .onPreferenceChange(CardHeightKey.self) { if $0 > 0 { cardHeight = $0 } }
@@ -89,8 +102,8 @@ struct SwipeView: View {
                 .buttonStyle(.plain)
                 .pointerCursor()
                 .keyboardShortcut("z", modifiers: .command)
-                .disabled(model.history.isEmpty)
-                .opacity(model.history.isEmpty ? 0.4 : 1)
+                .disabled(model.history.isEmpty || model.artistStop != nil)
+                .opacity(model.history.isEmpty || model.artistStop != nil ? 0.4 : 1)
                 .help("Undo (⌘Z)")
                 .padding(.leading, compact ? 8 : 0)
             }
@@ -141,6 +154,33 @@ struct SwipeView: View {
         .fixedSize()
         .scaleEffect(scale)
         .frame(width: cardWidth * scale, height: (cardHeight + 12) * scale)
+    }
+
+    /// Offered after the third deletion by one artist, in place of the next card.
+    private func artistStopCard(_ stop: AppModel.ArtistStop) -> some View {
+        VStack(spacing: 14) {
+            Mascot(mood: .wink, size: 64)
+            ArtistAvatar(artist: stop.artist, size: 88)
+            Text("That's \(stop.deleted) songs by \(stop.artist)")
+                .font(Theme.display(22))
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+            Text("They have \(stop.remaining) more in your library. Go through them now, then pick up where you left off?")
+                .foregroundStyle(Theme.muted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 10) {
+                Button("Go through their songs") { model.acceptArtistStop() }.buttonStyle(.primary)
+                Button("Not now") { model.declineArtistStop() }.buttonStyle(.secondary)
+            }
+            .padding(.top, 6)
+            Text("Return to go, Esc to skip").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+        }
+        .padding(24)
+        .frame(width: 320)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line))
+        .shadow(color: .black.opacity(0.10), radius: 16, y: 8)
     }
 
     private var sidebar: some View {
@@ -217,8 +257,16 @@ struct SwipeView: View {
 
     private var dragGesture: some Gesture {
         DragGesture()
-            .onChanged { drag = $0.translation }
+            .onChanged { value in
+                drag = value.translation
+                let past = abs(value.translation.width) > threshold || value.translation.height < -threshold
+                if past != pastThreshold {
+                    pastThreshold = past
+                    if past { model.feedback(.threshold) }
+                }
+            }
             .onEnded { value in
+                pastThreshold = false
                 let t = value.translation
                 if t.width > threshold {
                     commit(model.rightDecision)
@@ -234,7 +282,7 @@ struct SwipeView: View {
 
     /// Flies the card off screen, then records the decision.
     private func commit(_ decision: Decision) {
-        guard !leaving, model.current != nil else { return }
+        guard !leaving, model.current != nil, model.artistStop == nil else { return }
         leaving = true
         let target: CGSize
         switch decision {
@@ -272,7 +320,7 @@ struct SongCard: View {
                         ZStack {
                             Color.black.opacity(0.45)
                             VStack(spacing: 14) {
-                                EqualizerView()
+                                LoadingRing()
                                 Text("Loading song…").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
                             }
                         }
@@ -423,16 +471,14 @@ private struct SessionDoneView: View {
     var body: some View {
         let chance = model.sessionKind == .secondChance
         VStack(spacing: 14) {
-            if !model.queue.isEmpty {
-                Mascot(mood: .cheer, size: 130, animated: true)
-                    .scaleEffect(shown ? 1 : 0.3)
-                    .opacity(shown ? 1 : 0)
-                    .animation(.spring(duration: 0.7, bounce: 0.5), value: shown)
-            }
+            Mascot(mood: model.queue.isEmpty ? .sleepy : chance ? .happy : .cheer, size: 130, animated: true)
+                .scaleEffect(shown ? 1 : 0.3)
+                .opacity(shown ? 1 : 0)
+                .animation(.spring(duration: 0.7, bounce: 0.5), value: shown)
             Text(model.queue.isEmpty ? "Nothing to swipe" : chance ? "Round done!" : "Session complete!").font(Theme.display(26))
                 .rise(shown, delay: 0.15)
             Text(model.queue.isEmpty
-                 ? "No songs match this filter right now. Try another one on the home screen."
+                 ? "Every song is either new, recently kept or already waiting. Try another filter on the home screen, or come back after you've listened to more."
                  : chance
                     ? "\(model.count(of: .delete)) to delete, \(model.count(of: .secondChance)) to ask again, \(model.count(of: .keep)) kept."
                     : "\(model.count(of: .delete)) marked for deletion, \(model.count(of: .secondChance)) in Second Chance, \(model.count(of: .keep)) kept.")
@@ -440,7 +486,9 @@ private struct SessionDoneView: View {
                 .multilineTextAlignment(.center)
                 .rise(shown, delay: 0.25)
             HStack(spacing: 10) {
-                if chance {
+                if model.queue.isEmpty {
+                    Button("Back home") { model.endSession() }.buttonStyle(.primary)
+                } else if chance {
                     Button("Apply choices") { Task { await model.finishSecondChanceRound() } }.buttonStyle(.primary)
                 } else {
                     if !model.state.pendingDelete.isEmpty {

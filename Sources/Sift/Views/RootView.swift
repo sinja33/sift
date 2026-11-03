@@ -69,9 +69,30 @@ struct WelcomeView: View {
             }
             .buttonStyle(.primary)
             .disabled(model.isLoading)
-            Text("macOS will ask once whether Sift may control Music. Click OK.")
-                .font(.caption)
-                .foregroundStyle(Theme.muted)
+            if let error = model.loadError {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.delete)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(error).fixedSize(horizontal: false, vertical: true)
+                        if model.loadErrorIsPermission {
+                            Button("Open Automation settings") {
+                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
+                            }
+                            .buttonStyle(.plain).pointerCursor().font(.callout.weight(.semibold)).underline()
+                        }
+                    }
+                }
+                .font(.callout)
+                .foregroundStyle(Theme.delete)
+                .padding(12)
+                .frame(width: 340, alignment: .leading)
+                .background(Theme.deleteSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .transition(.opacity)
+            } else {
+                Text("macOS will ask once whether Sift may control Music. Click OK.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.muted)
+            }
         }
         .padding(56)
         .frame(maxWidth: 560)

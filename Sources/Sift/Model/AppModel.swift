@@ -61,7 +61,11 @@ final class AppModel {
     var screen: Screen = .welcome
     var isLoading = false
     var errorMessage: String?
+    /// Why the library could not be read, shown on the screen instead of a pop-up.
+    var loadError: String?
     var toast: String?
+    /// A newer release than the installed one, until it is dismissed.
+    var availableUpdate: UpdateCheck.Release?
 
     var songs: [Song] = []
     var state: SavedState
@@ -79,6 +83,15 @@ final class AppModel {
     var spotlightArtist: String?
     var index = 0
     var history: [(song: Song, decision: Decision)] = []
+    /// Set when you have deleted a few songs by one artist and Sift offers to go through the rest.
+    var artistStop: ArtistStop?
+    @ObservationIgnored private var offeredArtists: Set<String> = []
+
+    struct ArtistStop: Equatable {
+        let artist: String
+        let deleted: Int
+        let remaining: Int
+    }
 
     // Clip playback
     var clipsEnabled: Bool { state.clipsEnabled }
@@ -141,6 +154,37 @@ final class AppModel {
         guard state.hasConnected else { return }
         screen = .home
         await connect()
+        await checkForUpdate()
+    }
+
+    // MARK: Updates
+
+    func checkForUpdate() async {
+        guard state.checkUpdates, availableUpdate == nil else { return }
+        guard let release = await UpdateCheck.newerRelease(), release.version != state.dismissedUpdate else { return }
+        availableUpdate = release
+    }
+
+    func dismissUpdate() {
+        state.dismissedUpdate = availableUpdate?.version
+        availableUpdate = nil
+        save()
+    }
+
+    func setCheckUpdates(_ value: Bool) {
+        state.checkUpdates = value
+        if !value { availableUpdate = nil }
+        save()
+        if value { Task { await checkForUpdate() } }
+    }
+
+    // MARK: Sound and haptics
+
+    func setSounds(_ value: Bool) { state.soundsEnabled = value; save() }
+    func setHaptics(_ value: Bool) { state.hapticsEnabled = value; save() }
+
+    func feedback(_ cue: Feedback.Cue) {
+        Feedback.play(cue, sounds: state.soundsEnabled, haptics: state.hapticsEnabled)
     }
 
     func connect() async {
@@ -148,15 +192,20 @@ final class AppModel {
         defer { isLoading = false }
         do {
             songs = try await music.loadSongs()
+            loadError = nil
             state.hasConnected = true
             pruneState()
             save()
             ensureSpotlight()
             if screen == .welcome { screen = .home }
         } catch {
-            errorMessage = MusicLibrary.friendlyMessage(for: error)
+            loadError = MusicLibrary.friendlyMessage(for: error)
+            feedback(.error)
         }
     }
+
+    /// True when the load failed because macOS has not allowed Sift to control Music.
+    var loadErrorIsPermission: Bool { loadError?.contains("Automation") == true }
 
     /// Forgets songs that are no longer in the library, e.g. deleted on another device.
     private func pruneState() {
@@ -164,6 +213,13 @@ final class AppModel {
         state.kept = state.kept.filter { ids.contains($0.key) }
         state.secondChance = state.secondChance.filter { ids.contains($0.key) }
         state.pendingDelete.removeAll { !ids.contains($0) }
+    }
+
+    /// Takes every song off the waiting-to-delete list without deleting or keeping it.
+    func clearPending() {
+        state.pendingDelete = []
+        save()
+        showToast("Cleared the list")
     }
 
     func setSwapDirections(_ value: Bool) {
@@ -207,6 +263,8 @@ final class AppModel {
         queue = Scoring.queue(from: songs, state: state, filter: filter, limit: sessionSize)
         index = 0
         history = []
+        artistStop = nil
+        offeredArtists = []
         screen = .session
         playClipForCurrent()
         if queue.isEmpty { showToast("No songs match this filter right now") }
@@ -214,6 +272,7 @@ final class AppModel {
 
     func endSession() {
         stopClip()
+        artistStop = nil
         sessionKind = .sift
         sessionArtist = nil
         screen = .home
@@ -267,6 +326,7 @@ final class AppModel {
         queue = list
         index = 0
         history = []
+        artistStop = nil
         screen = .session
         playClipForCurrent()
     }
@@ -288,6 +348,8 @@ final class AppModel {
             }
             history.append((song, decision))
             index += 1
+            feedback(.decision(decision))
+            if current == nil { feedback(.done) }
             playClipForCurrent()
             return
         }
@@ -302,10 +364,48 @@ final class AppModel {
         history.append((song, decision))
         index += 1
         save()
+        feedback(.decision(decision))
+        if decision == .delete, let stop = artistStopOffer(after: song) {
+            artistStop = stop
+            stopClip()
+            return
+        }
+        if current == nil { feedback(.done) }
+        playClipForCurrent()
+    }
+
+    /// After the third deletion by one artist, offers to go through the rest of their songs.
+    private func artistStopOffer(after song: Song) -> ArtistStop? {
+        guard sessionArtist == nil, sessionKind == .sift else { return nil }
+        let key = Scoring.artistKey(song.artist)
+        guard !key.isEmpty, !offeredArtists.contains(key) else { return nil }
+        let deleted = history.filter { $0.decision == .delete && Scoring.artistKey($0.song.artist) == key }.count
+        guard deleted >= 3 else { return nil }
+        let remaining = songs(by: song.artist).count
+        guard remaining >= 2 else { return nil }
+        offeredArtists.insert(key)
+        return ArtistStop(artist: song.artist, deleted: deleted, remaining: remaining)
+    }
+
+    /// Takes up the offer: their songs come next, then the rest of this session carries on.
+    func acceptArtistStop() {
+        guard let stop = artistStop else { return }
+        artistStop = nil
+        let theirs = Array(songs(by: stop.artist).prefix(30))
+        let ids = Set(theirs.map(\.id))
+        let rest = queue[index...].filter { !ids.contains($0.id) }
+        queue = Array(queue[..<index]) + theirs + rest
+        showToast("Going through \(stop.artist)")
+        playClipForCurrent()
+    }
+
+    func declineArtistStop() {
+        artistStop = nil
         playClipForCurrent()
     }
 
     func undo() {
+        guard artistStop == nil else { return }
         guard let last = history.popLast() else { return }
         let id = last.song.id
         if sessionKind == .secondChance {
@@ -325,6 +425,7 @@ final class AppModel {
         }
         index = queue.firstIndex { $0.id == id } ?? max(0, index - 1)
         save()
+        feedback(.undo)
         playClipForCurrent()
     }
 
@@ -368,6 +469,7 @@ final class AppModel {
                 guard !Task.isCancelled else { return }
                 clipLoading = false
                 clipUnplayable = true
+                feedback(.error)
                 try? await music.pause()
             } catch {
                 guard !Task.isCancelled else { return }

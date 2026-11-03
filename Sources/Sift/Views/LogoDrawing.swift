@@ -43,7 +43,7 @@ enum LogoDrawing {
         context.fill(note.applying(toTile), with: .color(ink))
     }
 
-    private static let note: Path = {
+    static let note: Path = {
         var p = Path()
         p.move(to: CGPoint(x: 13.75, y: 2))
         p.addCurve(to: CGPoint(x: 13, y: 1.25), control1: CGPoint(x: 13.75, y: 1.58579), control2: CGPoint(x: 13.4142, y: 1.25))

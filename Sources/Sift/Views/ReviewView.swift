@@ -22,9 +22,8 @@ struct ReviewView: View {
             }
 
             if songs.isEmpty {
-                Text("Nothing is marked for deletion. Swipe a session first.")
-                    .foregroundStyle(Theme.muted)
-                    .frame(maxWidth: .infinity, minHeight: 200)
+                EmptyState(mood: .happy, title: "All clear", message: "Nothing is marked for deletion. Swipe a session first.") {}
+                    .frame(minHeight: 200)
                     .panel()
             } else {
                 ScrollView {
