@@ -17,10 +17,10 @@ struct SwipeView: View {
     var body: some View {
         GeometryReader { geo in
             let wide = geo.size.width >= 860
-            let large = geo.size.width >= 1300
-            let availableWidth = geo.size.width - 56 - (large ? 2 * (columnWidth + 28) : wide ? sidebarWidth + 28 : 0)
+            let large = geo.size.width >= 1100
+            let availableWidth = geo.size.width - 80 - (large ? 2 * (columnWidth + 28) : wide ? sidebarWidth + 28 : 0)
             // The deck is drawn at its natural size and scaled to fill what is left of the window.
-            let availableHeight = geo.size.height - 64 - 24 - 56 - 22 - 56
+            let availableHeight = geo.size.height - 64 - 24 - 80 - 22 - 56
             let scale = min(large ? 1.7 : 1.5, max(0.7, min(availableWidth / cardWidth, availableHeight / cardHeight)))
             VStack(spacing: 0) {
                 header(compact: !wide)
@@ -43,7 +43,7 @@ struct SwipeView: View {
 
                     if large { upNext.frame(width: columnWidth) } else if wide { sidebar.frame(width: sidebarWidth) }
                 }
-                .padding(28)
+                .padding(40)
                 Spacer(minLength: 0)
             }
         }
@@ -66,6 +66,9 @@ struct SwipeView: View {
             if model.sessionKind == .secondChance {
                 Text("SECOND CHANCE ROUND").font(Theme.mono(12)).tracking(1).foregroundStyle(Theme.muted)
                     .padding(.leading, 8)
+            } else if let artist = model.sessionArtist {
+                Text("ARTIST · \(artist.uppercased())").font(Theme.mono(12)).tracking(1).foregroundStyle(Theme.muted)
+                    .lineLimit(1).padding(.leading, 8)
             }
             Spacer()
             if compact {
@@ -98,8 +101,8 @@ struct SwipeView: View {
                     .padding(.leading, 8)
             }
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 20)
+        .padding(.horizontal, 40)
+        .padding(.top, 28)
     }
 
     private var progressBar: some View {
@@ -112,7 +115,7 @@ struct SwipeView: View {
             }
         }
         .frame(height: 10)
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 40)
         .padding(.top, 18)
         .animation(.spring(duration: 0.4), value: model.index)
         .opacity(model.queue.isEmpty ? 0 : 1)
@@ -158,9 +161,9 @@ struct SwipeView: View {
                 keyHint("←", model.label(for: model.leftDecision))
                 keyHint("→", model.label(for: model.rightDecision))
                 keyHint("↑", model.label(for: .secondChance))
-                keyHint("Space", "Replay clip")
                 keyHint("S", "Skip song")
                 keyHint("⌘Z", "Undo")
+                keyHint("Space", "Replay clip")
             }
             .font(.callout)
             .foregroundStyle(Theme.muted)
@@ -242,7 +245,7 @@ struct SwipeView: View {
         withAnimation(.easeIn(duration: 0.2)) { drag = target }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(200))
-            model.decide(decision)
+            withAnimation(.smooth(duration: 0.3)) { model.decide(decision) }
             drag = .zero
             leaving = false
         }
@@ -415,12 +418,19 @@ private struct ClipBar: View {
 
 private struct SessionDoneView: View {
     @Environment(AppModel.self) private var model
+    @State private var shown = false
 
     var body: some View {
         let chance = model.sessionKind == .secondChance
         VStack(spacing: 14) {
-            if !model.queue.isEmpty { Mascot(mood: .cheer, size: 130) }
+            if !model.queue.isEmpty {
+                Mascot(mood: .cheer, size: 130, animated: true)
+                    .scaleEffect(shown ? 1 : 0.3)
+                    .opacity(shown ? 1 : 0)
+                    .animation(.spring(duration: 0.7, bounce: 0.5), value: shown)
+            }
             Text(model.queue.isEmpty ? "Nothing to swipe" : chance ? "Round done!" : "Session complete!").font(Theme.display(26))
+                .rise(shown, delay: 0.15)
             Text(model.queue.isEmpty
                  ? "No songs match this filter right now. Try another one on the home screen."
                  : chance
@@ -428,6 +438,7 @@ private struct SessionDoneView: View {
                     : "\(model.count(of: .delete)) marked for deletion, \(model.count(of: .secondChance)) in Second Chance, \(model.count(of: .keep)) kept.")
                 .foregroundStyle(Theme.muted)
                 .multilineTextAlignment(.center)
+                .rise(shown, delay: 0.25)
             HStack(spacing: 10) {
                 if chance {
                     Button("Apply choices") { Task { await model.finishSecondChanceRound() } }.buttonStyle(.primary)
@@ -438,8 +449,19 @@ private struct SessionDoneView: View {
                     Button("Another session") { model.startSession() }.buttonStyle(.primary)
                 }
             }
+            .rise(shown, delay: 0.35)
         }
         .padding(.top, 80)
         .frame(maxWidth: 420)
+        .onAppear { shown = true }
+    }
+}
+
+private extension View {
+    /// Fades in and floats up once `shown` turns true.
+    func rise(_ shown: Bool, delay: Double) -> some View {
+        self.opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : 16)
+            .animation(.spring(duration: 0.55, bounce: 0.15).delay(delay), value: shown)
     }
 }

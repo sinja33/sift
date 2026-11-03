@@ -63,7 +63,7 @@ struct ReviewView: View {
                 .font(.caption)
                 .foregroundStyle(Theme.muted)
         }
-        .padding(32)
+        .padding(44)
         .frame(maxWidth: 1100)
         .onAppear { selected = Set(songs.map(\.id)) }
         .confirmationDialog("Delete \(selected.count) songs from your library?", isPresented: $confirming) {

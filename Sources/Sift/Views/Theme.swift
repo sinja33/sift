@@ -82,6 +82,8 @@ struct CapsuleButtonStyle: ButtonStyle {
             .background(fill, in: Capsule())
             .foregroundStyle(text)
             .opacity(configuration.isPressed ? 0.8 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.smooth(duration: 0.15), value: configuration.isPressed)
             .contentShape(Capsule())
             .pointerCursor()
     }
@@ -100,5 +102,65 @@ extension View {
             .padding(padding)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(Theme.line))
+    }
+}
+
+/// Fades and lifts a view into place when it first appears, after an optional delay.
+private struct Reveal: ViewModifier {
+    var delay: Double
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : 14)
+            .onAppear { withAnimation(.spring(duration: 0.55, bounce: 0.12).delay(delay)) { shown = true } }
+    }
+}
+
+/// A soft band of light that sweeps across a placeholder while content loads.
+private struct Shimmer: ViewModifier {
+    var active: Bool
+    @State private var phase: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            if active {
+                GeometryReader { geo in
+                    LinearGradient(colors: [.clear, Color.white.opacity(0.22), .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: geo.size.width * 0.5)
+                        .offset(x: -geo.size.width * 0.5 + phase * geo.size.width * 1.5)
+                }
+                .allowsHitTesting(false)
+                .onAppear { withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) { phase = 1 } }
+            }
+        }
+        .clipped()
+    }
+}
+
+extension View {
+    func reveal(delay: Double = 0) -> some View { modifier(Reveal(delay: delay)) }
+    func shimmer(_ active: Bool = true) -> some View { modifier(Shimmer(active: active)) }
+}
+
+/// An empty panel shown where a panel will appear once the library has loaded.
+struct SkeletonPanel: View {
+    var height: CGFloat = 150
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Capsule().fill(Theme.surface2).frame(width: 150, height: 14)
+            Capsule().fill(Theme.surface2).frame(height: 10)
+            Capsule().fill(Theme.surface2).frame(width: 220, height: 10)
+            Spacer(minLength: 0)
+            Capsule().fill(Theme.surface2).frame(width: 130, height: 36)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, minHeight: height, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.line))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shimmer()
     }
 }

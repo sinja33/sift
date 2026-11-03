@@ -27,11 +27,8 @@ enum Scoring {
     /// Songs for the next session, most likely clutter first. Skips songs added in the
     /// last month, songs kept recently, and songs already waiting on a decision.
     static func queue(from songs: [Song], state: SavedState, filter: QueueFilter, limit: Int, now: Date = Date()) -> [Song] {
-        let pending = Set(state.pendingDelete)
         let eligible = songs.filter { song in
-            if pending.contains(song.id) || state.secondChance[song.id] != nil { return false }
-            if let kept = state.kept[song.id], now.timeIntervalSince(kept) < keepHideTime { return false }
-            if let added = song.dateAdded, now.timeIntervalSince(added) < newSongGrace { return false }
+            guard isEligible(song, state: state, now: now) else { return false }
             switch filter {
             case .smart: return true
             case .neverPlayed: return song.playCount == 0
@@ -43,6 +40,29 @@ enum Scoring {
             .sorted { $0.score > $1.score }
             .prefix(limit)
             .map { $0.song }
+    }
+
+    /// False for songs waiting on a decision, kept recently, or added in the last month.
+    static func isEligible(_ song: Song, state: SavedState, now: Date = Date()) -> Bool {
+        if state.pendingDelete.contains(song.id) || state.secondChance[song.id] != nil { return false }
+        if let kept = state.kept[song.id], now.timeIntervalSince(kept) < keepHideTime { return false }
+        if let added = song.dateAdded, now.timeIntervalSince(added) < newSongGrace { return false }
+        return true
+    }
+
+    static func artistKey(_ artist: String) -> String { artist.trimmingCharacters(in: .whitespaces).lowercased() }
+
+    /// Artists with several songs to go through whom you rarely listen to, the least played first.
+    static func spotlightCandidates(from songs: [Song], state: SavedState, minSongs: Int = 4, limit: Int = 8, now: Date = Date()) -> [String] {
+        let eligible = songs.filter { isEligible($0, state: state, now: now) }
+        let groups = Dictionary(grouping: eligible) { artistKey($0.artist) }
+        var ranked: [(name: String, average: Double, count: Int)] = []
+        for (key, list) in groups where !key.isEmpty && key != "unknown artist" && list.count >= minSongs {
+            let plays = list.reduce(0) { $0 + $1.playCount }
+            ranked.append((list[0].artist, Double(plays) / Double(list.count), list.count))
+        }
+        ranked.sort { $0.average != $1.average ? $0.average < $1.average : $0.count > $1.count }
+        return ranked.prefix(limit).map { $0.name }
     }
 }
 

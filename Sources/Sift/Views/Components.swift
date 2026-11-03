@@ -45,6 +45,7 @@ struct Pill: View {
             .background(soft, in: Capsule())
             .foregroundStyle(tint)
             .lineLimit(1)
+            .contentTransition(.numericText())
     }
 }
 
@@ -76,9 +77,22 @@ struct ActionButton: View {
                 .overlay(Circle().stroke(decision.tint, lineWidth: 2))
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ActionPress())
         .pointerCursor()
         .help(decision.label)
+    }
+}
+
+/// Grows slightly under the cursor and shrinks when pressed.
+private struct ActionPress: ButtonStyle {
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : hovering ? 1.08 : 1)
+            .animation(.spring(duration: 0.25, bounce: 0.3), value: configuration.isPressed)
+            .animation(.spring(duration: 0.25, bounce: 0.3), value: hovering)
+            .onHover { hovering = $0 }
     }
 }
 
@@ -168,19 +182,23 @@ struct PillPicker<Option: Hashable>: View {
     let options: [Option]
     @Binding var selection: Option
     let label: (Option) -> String
+    @Namespace private var slider
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(options, id: \.self) { option in
                 let on = option == selection
-                Button { selection = option } label: {
+                Button { withAnimation(.smooth(duration: 0.25)) { selection = option } } label: {
                     Text(label(option))
                         .font(.system(size: 13, weight: on ? .semibold : .regular))
                         .foregroundStyle(on ? Theme.ink : Theme.muted)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
                         .background {
-                            if on { Capsule().fill(Theme.surface).shadow(color: .black.opacity(0.10), radius: 1.5, y: 1) }
+                            if on {
+                                Capsule().fill(Theme.surface).shadow(color: .black.opacity(0.10), radius: 1.5, y: 1)
+                                    .matchedGeometryEffect(id: "selected", in: slider)
+                            }
                         }
                         .contentShape(Capsule())
                 }

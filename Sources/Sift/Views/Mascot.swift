@@ -5,6 +5,8 @@ struct Mascot: View {
     enum Mood: CaseIterable { case happy, sparkle, wink, heart, cheer }
     let mood: Mood
     var size: CGFloat = 120
+    /// Bobs, waves and twinkles. Off by default so small uses stay still.
+    var animated = false
     @Environment(\.colorScheme) private var scheme
 
     private static let ink = Color(red: 0x15 / 255, green: 0x17 / 255, blue: 0x2A / 255)
@@ -13,6 +15,23 @@ struct Mascot: View {
     var body: some View {
         // Outlines sit on the page, so they flip to light in dark mode. Faces stay dark on the white card.
         let outline = scheme == .dark ? Color(red: 0xEC / 255, green: 0xEE / 255, blue: 0xFA / 255) : Self.ink
+        if animated {
+            TimelineView(.animation) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                drawing(outline: outline, time: t)
+                    .offset(y: CGFloat(sin(t * 3)) * 4)
+                    .rotationEffect(.degrees(sin(t * 2) * 3))
+            }
+        } else {
+            drawing(outline: outline, time: 0)
+        }
+    }
+
+    private func drawing(outline: Color, time t: Double) -> some View {
+        let live: CGFloat = t == 0 ? 0 : 1
+        let wave = CGFloat(sin(t * 7)) * 6 * live
+        // Confetti drifts and twinkles, each piece on its own beat.
+        func drift(_ k: Double) -> CGFloat { CGFloat(sin(t * 2.4 + k)) * 3.5 * live }
         return Canvas { context, canvas in
             let s = canvas.width / 120
             func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * s, y: y * s) }
@@ -94,10 +113,11 @@ struct Mascot: View {
                 smile(from: p(47, 60), to: p(59, 60), control: p(53, 52))
                 smile(from: p(65, 60), to: p(77, 60), control: p(71, 52))
                 blush(66); openMouth(68)
-                line(p(34, 64), p(16, 34), width: 3); line(p(90, 64), p(108, 34), width: 3)
+                line(p(34, 64), p(16 + wave, 34 - abs(wave) * 0.6), width: 3)
+                line(p(90, 64), p(108 - wave, 34 - abs(wave) * 0.6), width: 3)
             }
-            dot(12, 24, 4, Color.hex(0xE39E12)); dot(106, 16, 3.6, Color.hex(0xE0424A))
-            dot(112, 62, 3.2, Color.hex(0x2FC68C)); dot(8, 64, 3.2, Color.hex(0x3B4CF5))
+            dot(12, 24 + drift(0), 4, Color.hex(0xE39E12)); dot(106, 16 + drift(1.5), 3.6, Color.hex(0xE0424A))
+            dot(112, 62 + drift(3), 3.2, Color.hex(0x2FC68C)); dot(8, 64 + drift(4.5), 3.2, Color.hex(0x3B4CF5))
         }
         .frame(width: size, height: size)
         .accessibilityLabel("Cheering card mascot")

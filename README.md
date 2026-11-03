@@ -66,6 +66,10 @@ Each session shows 20 songs by default (you can change it in Settings) most like
 - songs you kept in the last 6 months
 - songs already in Second Chance or waiting to be deleted
 
+## Artist spotlight
+
+The Home screen offers an artist you rarely play, and you can go through all of their songs in one session. Music has no artist pictures, so Sift looks up the photo on Deezer's public search. Only the artist's name is sent, nothing else about your library. Photos are cached in `~/Library/Caches/Sift`, and a letter tile is shown when none is found.
+
 ## How it works
 
 Apple doesn't let iPhone or web apps delete songs from your library. The Music app on the Mac can be scripted, though, so Sift talks to it through `osascript` (see `Sources/Sift/Music/Scripts.swift`). That's how it reads play counts, plays clips, manages the Second Chance playlist, and deletes songs.

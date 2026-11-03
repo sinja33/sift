@@ -73,6 +73,10 @@ final class AppModel {
     var chanceItems: [String: SecondChanceItem] = [:]
     var chanceChoices: [String: SecondChanceChoice] = [:]
     var queue: [Song] = []
+    /// The artist whose songs this session goes through, when it is an artist session.
+    var sessionArtist: String?
+    /// The artist offered on the home screen.
+    var spotlightArtist: String?
     var index = 0
     var history: [(song: Song, decision: Decision)] = []
 
@@ -91,8 +95,11 @@ final class AppModel {
     private let store = StateStore()
     @ObservationIgnored private var clipTask: Task<Void, Never>?
     @ObservationIgnored private var artworkCache: [String: NSImage] = [:]
+    @ObservationIgnored private var artworkMisses: Set<String> = []
     @ObservationIgnored private var artworkPrefetch: Task<Void, Never>?
     @ObservationIgnored private var downloadRequested: Set<String> = []
+    @ObservationIgnored private var artistImageCache: [String: NSImage] = [:]
+    @ObservationIgnored private var artistImageMisses: Set<String> = []
 
     init() {
         state = StateStore().load()
@@ -144,6 +151,7 @@ final class AppModel {
             state.hasConnected = true
             pruneState()
             save()
+            ensureSpotlight()
             if screen == .welcome { screen = .home }
         } catch {
             errorMessage = MusicLibrary.friendlyMessage(for: error)
@@ -195,6 +203,7 @@ final class AppModel {
 
     func startSession() {
         sessionKind = .sift
+        sessionArtist = nil
         queue = Scoring.queue(from: songs, state: state, filter: filter, limit: sessionSize)
         index = 0
         history = []
@@ -206,7 +215,60 @@ final class AppModel {
     func endSession() {
         stopClip()
         sessionKind = .sift
+        sessionArtist = nil
         screen = .home
+        ensureSpotlight()
+    }
+
+    // MARK: Artist spotlight
+
+    /// Songs by an artist that are still up for a decision, most likely clutter first.
+    func songs(by artist: String) -> [Song] {
+        let key = Scoring.artistKey(artist)
+        let now = Date()
+        return songs
+            .filter { Scoring.artistKey($0.artist) == key && Scoring.isEligible($0, state: state, now: now) }
+            .sorted { Scoring.clutterScore($0, now: now) > Scoring.clutterScore($1, now: now) }
+    }
+
+    var spotlightSongs: [Song] { spotlightArtist.map(songs(by:)) ?? [] }
+
+    /// Keeps the current artist while they still have songs to go through, and picks a new one otherwise.
+    func ensureSpotlight() {
+        if let artist = spotlightArtist, songs(by: artist).count >= 2 { return }
+        pickSpotlight()
+    }
+
+    /// Picks one of the least-played artists at random, avoiding the one already shown.
+    func pickSpotlight() {
+        let names = Scoring.spotlightCandidates(from: songs, state: state)
+        spotlightArtist = names.filter { $0 != spotlightArtist }.randomElement() ?? names.first
+    }
+
+    /// The artist's photo, or nil when none could be found.
+    func artistImage(for artist: String) async -> NSImage? {
+        let key = Scoring.artistKey(artist)
+        if let cached = artistImageCache[key] { return cached }
+        if artistImageMisses.contains(key) { return nil }
+        guard let image = await ArtistImages.fetch(artist) else {
+            artistImageMisses.insert(key)
+            return nil
+        }
+        artistImageCache[key] = image
+        return image
+    }
+
+    func startArtistSession() {
+        guard let artist = spotlightArtist else { return }
+        let list = Array(songs(by: artist).prefix(60))
+        guard !list.isEmpty else { pickSpotlight(); return }
+        sessionKind = .sift
+        sessionArtist = artist
+        queue = list
+        index = 0
+        history = []
+        screen = .session
+        playClipForCurrent()
     }
 
     /// Moves past the current song without deciding anything. It can come up again in a later session.
@@ -306,10 +368,12 @@ final class AppModel {
                 guard !Task.isCancelled else { return }
                 clipLoading = false
                 clipUnplayable = true
+                try? await music.pause()
             } catch {
                 guard !Task.isCancelled else { return }
                 clipLoading = false
                 errorMessage = MusicLibrary.friendlyMessage(for: error)
+                try? await music.pause()
             }
         }
     }
@@ -357,9 +421,20 @@ final class AppModel {
 
     func artwork(for song: Song) async -> NSImage? {
         if let cached = artworkCache[song.id] { return cached }
-        guard let url = try? await music.artworkFile(id: song.id),
-              let data = try? Data(contentsOf: url),
-              let image = NSImage(data: data) else { return nil }
+        if artworkMisses.contains(song.id) { return nil }
+        var image: NSImage?
+        var asked = false
+        do {
+            if let url = try await music.artworkFile(id: song.id), let data = try? Data(contentsOf: url) { image = NSImage(data: data) }
+            asked = true
+        } catch {}
+        // Many cloud songs have no artwork in Music. Look it up online instead.
+        if image == nil { image = await CoverLookup.fetch(song) }
+        guard let image else {
+            // A failed ask of Music may work later, so only remember a definite "none".
+            if asked { artworkMisses.insert(song.id) }
+            return nil
+        }
         artworkCache[song.id] = image
         return image
     }
@@ -390,14 +465,16 @@ final class AppModel {
     // MARK: Second Chance
 
     /// Starts a swipe-style round over the songs whose waiting time is up.
-    func openSecondChance() async {
+    /// Opens a round. By default only songs whose wait is over; `all` goes through every song in the playlist.
+    func openSecondChance(all: Bool = false) async {
         await connect()
-        let items = secondChanceRound()
+        let items = secondChanceRound(all: all)
         guard !items.isEmpty else {
-            showToast("No Second Chance songs are due yet")
+            showToast(all ? "There are no songs in Second Chance yet" : "No Second Chance songs are due yet")
             return
         }
         sessionKind = .secondChance
+        sessionArtist = nil
         chanceItems = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         chanceChoices = [:]
         queue = items.map(\.song)
@@ -422,12 +499,12 @@ final class AppModel {
         await applySecondChance(items)
     }
 
-    /// Songs whose waiting time is up, with a suggested choice for each.
-    func secondChanceRound() -> [SecondChanceItem] {
+    /// Songs whose waiting time is up, or all of them, with a suggested choice for each.
+    func secondChanceRound(all: Bool = false) -> [SecondChanceItem] {
         let byID = songsByID
         let now = Date()
         return state.secondChance
-            .filter { now.timeIntervalSince($0.value.added) >= secondChanceWait }
+            .filter { all || now.timeIntervalSince($0.value.added) >= secondChanceWait }
             .compactMap { pair -> SecondChanceItem? in
                 let entry = pair.value
                 guard let song = byID[pair.key] else { return nil }

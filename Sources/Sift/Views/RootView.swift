@@ -8,10 +8,10 @@ struct RootView: View {
             Theme.paper.ignoresSafeArea()
             Group {
                 switch model.screen {
-                case .welcome: WelcomeView()
-                case .home: HomeView()
-                case .session: SwipeView()
-                case .review: ReviewView()
+                case .welcome: WelcomeView().transition(screenChange)
+                case .home: HomeView().transition(screenChange)
+                case .session: SwipeView().transition(screenChange)
+                case .review: ReviewView().transition(screenChange)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -24,6 +24,7 @@ struct RootView: View {
         .foregroundStyle(Theme.ink)
         .preferredColorScheme(model.colorScheme)
         .animation(.easeOut(duration: 0.2), value: model.toast)
+        .animation(.smooth(duration: 0.35), value: model.screen)
         .alert("Something went wrong", isPresented: errorShown) {
             Button("OK") { model.errorMessage = nil }
         } message: {
@@ -32,6 +33,8 @@ struct RootView: View {
         .frame(minWidth: 640, minHeight: 560)
         .task { await model.start() }
     }
+
+    private var screenChange: AnyTransition { .opacity.combined(with: .scale(scale: 0.985)) }
 
     private var errorShown: Binding<Bool> {
         Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
@@ -70,7 +73,7 @@ struct WelcomeView: View {
                 .font(.caption)
                 .foregroundStyle(Theme.muted)
         }
-        .padding(40)
+        .padding(56)
         .frame(maxWidth: 560)
     }
 

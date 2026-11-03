@@ -4,10 +4,13 @@ struct HomeView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSettings = false
 
+    /// False until the first read of the library is done.
+    private var loaded: Bool { !(model.isLoading && model.songs.isEmpty) }
+
     var body: some View {
         @Bindable var model = model
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 32) {
                 header
 
                 HStack(spacing: 36) {
@@ -20,10 +23,13 @@ struct HomeView: View {
                             StatView(value: model.neverPlayedCount.formatted(), label: "never played", size: 24)
                             StatView(value: model.state.removedCount.formatted(), label: "removed so far", size: 24)
                         }
+                        .redacted(reason: loaded ? [] : .placeholder)
+                        .shimmer(!loaded)
+                        .animation(.smooth(duration: 0.4), value: loaded)
                     }
                 }
 
-                if !model.state.pendingDelete.isEmpty {
+                if loaded && !model.state.pendingDelete.isEmpty {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("\(model.state.pendingDelete.count) songs marked for deletion").font(.headline)
@@ -33,18 +39,71 @@ struct HomeView: View {
                         Button("Review and delete") { model.screen = .review }.buttonStyle(.danger)
                     }
                     .panel()
+                    .reveal()
                 }
 
-                HStack(alignment: .top, spacing: 16) {
-                    swipePanel
-                    chancePanel
+                if loaded {
+                    // The three panels arrive together, one after the other.
+                    HStack(alignment: .top, spacing: 16) {
+                        swipePanel
+                        chancePanel
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .reveal(delay: 0.05)
+
+                    spotlightPanel.reveal(delay: 0.15)
+                } else {
+                    HStack(alignment: .top, spacing: 16) {
+                        SkeletonPanel()
+                        SkeletonPanel()
+                    }
+                    SkeletonPanel(height: 170)
                 }
-                .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(32)
+            .padding(44)
             .frame(maxWidth: 1100)
             .frame(maxWidth: .infinity)
         }
+        .onAppear { model.ensureSpotlight() }
+    }
+
+    @ViewBuilder private var spotlightPanel: some View {
+        let songs = model.spotlightSongs
+        if let artist = model.spotlightArtist, !songs.isEmpty {
+            let never = songs.filter { $0.playCount == 0 }.count
+            let plays = songs.reduce(0) { $0 + $1.playCount }
+            let titles = songs.prefix(3).map(\.title).joined(separator: ", ")
+            VStack(alignment: .leading, spacing: 26) {
+                HStack(spacing: 18) {
+                    ArtistAvatar(artist: artist, gradient: avatarGradient(artist))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("ARTIST SPOTLIGHT").font(Theme.mono(11)).tracking(1).foregroundStyle(Theme.muted)
+                        Text(artist).font(Theme.display(24)).lineLimit(1)
+                        Text("\(songs.count) songs to go through · \(never) never played · \(plays) plays in total")
+                            .font(.callout).foregroundStyle(Theme.muted)
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text(songs.count > 3 ? "Starting with \(titles) and \(songs.count - 3) more." : "Starting with \(titles).")
+                    .font(.callout).foregroundStyle(Theme.muted).lineLimit(2)
+                HStack(spacing: 10) {
+                    Button("Go through their songs") { model.startArtistSession() }.buttonStyle(.primary)
+                    Button { model.pickSpotlight() } label: { Label("Pick another artist", systemImage: "shuffle") }
+                        .buttonStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .panel(padding: 20)
+        }
+    }
+
+    private func avatarGradient(_ name: String) -> LinearGradient {
+        let seed = name.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFFFF }
+        let hue = Double(seed % 360) / 360
+        return LinearGradient(colors: [
+            Color(hue: hue, saturation: 0.6, brightness: 0.95),
+            Color(hue: (hue + 0.18).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.45)
+        ], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     private var swipePanel: some View {
@@ -65,21 +124,34 @@ struct HomeView: View {
 
     private var chancePanel: some View {
         let due = model.secondChanceDueCount
+        let total = model.state.secondChance.count
         return VStack(alignment: .leading, spacing: 12) {
             Text(due > 0 ? "Second Chance round ready" : "Second Chance").font(.headline)
-            Text(due > 0
-                 ? "\(due) songs have waited 3 weeks in the Second Chance playlist. See which ones you played."
-                 : "\(model.state.secondChance.count) songs are waiting in the Second Chance playlist. A round opens 3 weeks after you add a song.")
+            Text(chanceText(due: due, total: total))
                 .font(.callout).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
-            if due > 0 {
-                Button("Review round") { Task { await model.openSecondChance() } }
-                    .buttonStyle(.secondary)
+            if total > 0 {
+                HStack(spacing: 10) {
+                    if due > 0 {
+                        Button("Review round") { Task { await model.openSecondChance() } }
+                            .buttonStyle(.secondary)
+                    }
+                    if due < total {
+                        Button(due > 0 ? "Go through all \(total)" : "Go through them now") { Task { await model.openSecondChance(all: true) } }
+                            .buttonStyle(.secondary)
+                    }
+                }
             }
         }
         .frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .panel(padding: 20)
+    }
+
+    private func chanceText(due: Int, total: Int) -> String {
+        if total == 0 { return "Songs you send to Second Chance wait here. After 3 weeks you can see which ones you played." }
+        if due > 0 { return "\(due) songs have waited 3 weeks in the Second Chance playlist. See which ones you played." }
+        return "\(total) songs are waiting in the Second Chance playlist. A round opens after 3 weeks, but you can go through them any time."
     }
 
     private var header: some View {
@@ -104,6 +176,33 @@ struct HomeView: View {
             .pointerCursor()
             .help("Settings")
             .popover(isPresented: $showingSettings, arrowEdge: .bottom) { SettingsView() }
+        }
+    }
+}
+
+/// The artist's photo in a circle, with their initial on a colored tile until it loads or when none is found.
+private struct ArtistAvatar: View {
+    let artist: String
+    let gradient: LinearGradient
+
+    @Environment(AppModel.self) private var model
+    @State private var image: NSImage?
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(nsImage: image).resizable().scaledToFill()
+            } else {
+                gradient
+                Text(String(artist.prefix(1)).uppercased()).font(Theme.display(30)).foregroundStyle(.white)
+            }
+        }
+        .frame(width: 72, height: 72)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Theme.line))
+        .task(id: artist) {
+            image = nil
+            image = await model.artistImage(for: artist)
         }
     }
 }
