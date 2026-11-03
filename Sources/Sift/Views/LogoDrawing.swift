@@ -1,45 +1,44 @@
 import SwiftUI
 
-/// The Sift mark, drawn on a 96 x 96 grid: an indigo tile with two outlined cards behind a white
-/// one that carries a music note. Shared by the in-app logo and scripts/icon, which renders the app icon.
+/// The Sift mark, drawn on a 96 x 96 grid: a midnight tile with a straight stack of three cards, the
+/// front one carrying a music note. Shared by the in-app logo and scripts/icon, which renders the app icon.
 enum LogoDrawing {
     private static let ink = Color(red: 0x15 / 255, green: 0x17 / 255, blue: 0x2A / 255)
 
-    /// Draws the mark filling `rect`.
-    static func draw(in context: inout GraphicsContext, rect: CGRect) {
+    /// Draws the mark filling `rect`. Without the tile only the cards are drawn, outlined in `outline`.
+    static func draw(in context: inout GraphicsContext, rect: CGRect, tile showsTile: Bool = true, outline: Color? = nil) {
+        let edge = outline ?? ink
         let s = rect.width / 96
-        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
 
-        // Tile, lighter in the middle and darker at the edges.
-        let tile = Path(roundedRect: rect, cornerRadius: 26 * s, style: .continuous)
-        let center = point(48, 43)
-        context.fill(tile, with: .radialGradient(
-            Gradient(stops: [
-                .init(color: Color(red: 0x5F / 255, green: 0x6E / 255, blue: 1), location: 0),
-                .init(color: Color(red: 0x3B / 255, green: 0x4C / 255, blue: 0xF5 / 255), location: 0.48),
-                .init(color: Color(red: 0x22 / 255, green: 0x30 / 255, blue: 0xB8 / 255), location: 1)
-            ]),
-            center: center, startRadius: 0, endRadius: 71.4 * s))
-
-        func card(x: CGFloat, y: CGFloat, width: CGFloat = 40, height: CGFloat = 54, fill: Color, degrees: Double = 0, pivot: (CGFloat, CGFloat) = (0, 0)) {
-            var path = Path(roundedRect: CGRect(x: rect.minX + x * s, y: rect.minY + y * s, width: width * s, height: height * s),
-                            cornerRadius: 8 * s, style: .continuous)
-            if degrees != 0 {
-                let p = point(pivot.0, pivot.1)
-                let t = CGAffineTransform(translationX: p.x, y: p.y).rotated(by: degrees * .pi / 180).translatedBy(x: -p.x, y: -p.y)
-                path = path.applying(t)
-            }
-            context.fill(path, with: .color(fill))
-            context.stroke(path, with: .color(ink), style: StrokeStyle(lineWidth: 2.2 * s, lineJoin: .round))
+        // Tile, a diagonal blend from a lifted blue-black to ink.
+        if showsTile {
+            let tile = Path(roundedRect: rect, cornerRadius: 26 * s, style: .continuous)
+            context.fill(tile, with: .linearGradient(
+                Gradient(colors: [Color(red: 0x2A / 255, green: 0x2D / 255, blue: 0x5A / 255), ink]),
+                startPoint: CGPoint(x: rect.minX, y: rect.minY), endPoint: CGPoint(x: rect.maxX, y: rect.maxY)))
         }
 
-        card(x: 20, y: 14, fill: Color(red: 0x9A / 255, green: 0xA6 / 255, blue: 1), degrees: -24, pivot: (40, 41))
-        card(x: 36, y: 31, fill: Color(red: 0xD3 / 255, green: 0xD8 / 255, blue: 1), degrees: 20, pivot: (56, 58))
-        card(x: 28, y: 22, width: 42, height: 56, fill: .white)
+        // The stack is laid out around (54, 48), then moved to the centre of the grid and enlarged by 10%.
+        let k: CGFloat = 1.1
+        func map(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + (48 + (x - 54) * k) * s, y: rect.minY + (48 + (y - 48) * k) * s)
+        }
+        func card(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, fill: Color) {
+            let origin = map(x, y)
+            let path = Path(roundedRect: CGRect(x: origin.x, y: origin.y, width: width * k * s, height: height * k * s),
+                            cornerRadius: 8 * k * s, style: .continuous)
+            context.fill(path, with: .color(fill))
+            context.stroke(path, with: .color(edge), style: StrokeStyle(lineWidth: 2.2 * k * s, lineJoin: .round))
+        }
+
+        card(x: 40, y: 14, width: 42, height: 54, fill: Color(red: 0xC5 / 255, green: 0xCB / 255, blue: 1))
+        card(x: 34, y: 19, width: 42, height: 56, fill: Color(red: 0x73 / 255, green: 0x81 / 255, blue: 1))
+        card(x: 26, y: 24, width: 44, height: 58, fill: .white)
 
         // Eighth note, from a 24 x 24 icon centred on the front card.
-        let toTile = CGAffineTransform(translationX: rect.minX + 49 * s, y: rect.minY + 51 * s)
-            .scaledBy(x: 1.65 * s, y: 1.65 * s)
+        let at = map(48, 53)
+        let toTile = CGAffineTransform(translationX: at.x, y: at.y)
+            .scaledBy(x: 1.45 * k * s, y: 1.45 * k * s)
             .translatedBy(x: -12, y: -12)
         context.fill(note.applying(toTile), with: .color(ink))
     }

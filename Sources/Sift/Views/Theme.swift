@@ -43,6 +43,33 @@ extension NSColor {
     }
 }
 
+/// Shows the pointing-hand cursor over anything you can click, unless it is disabled.
+private struct PointerCursor: ViewModifier {
+    @Environment(\.isEnabled) private var enabled
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { inside in
+                guard inside != hovering else { return }
+                hovering = inside
+                if inside && enabled { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
+            .onChange(of: enabled) { _, now in
+                guard hovering else { return }
+                if now { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
+            .onDisappear {
+                if hovering && enabled { NSCursor.pop() }
+                hovering = false
+            }
+    }
+}
+
+extension View {
+    func pointerCursor() -> some View { modifier(PointerCursor()) }
+}
+
 struct CapsuleButtonStyle: ButtonStyle {
     var fill: Color
     var text: Color
@@ -56,6 +83,7 @@ struct CapsuleButtonStyle: ButtonStyle {
             .foregroundStyle(text)
             .opacity(configuration.isPressed ? 0.8 : 1)
             .contentShape(Capsule())
+            .pointerCursor()
     }
 }
 

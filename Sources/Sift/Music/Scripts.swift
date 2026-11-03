@@ -79,6 +79,29 @@ enum Scripts {
             end try
           end repeat
         end if
+        -- Streaming songs report "playing" while they buffer. Wait until the position moves, so the
+        -- caller's timer starts when sound does.
+        repeat 40 times
+          try
+            if player state is playing and (player position) > startAt + 0.4 then exit repeat
+          end try
+          delay 0.25
+        end repeat
+      end tell
+      return "ok"
+    end run
+    """#
+
+    /// argv: ids. Asks Music to download cloud songs ahead of time. Returns right away; the downloads run on their own.
+    static let download = #"""
+    on run argv
+      tell application "Music"
+        repeat with pid in argv
+          try
+            set found to (every track of library playlist 1 whose persistent ID is (pid as text))
+            if (count of found) > 0 then download (item 1 of found)
+          end try
+        end repeat
       end tell
       return "ok"
     end run

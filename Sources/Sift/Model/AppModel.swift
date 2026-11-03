@@ -91,6 +91,8 @@ final class AppModel {
     private let store = StateStore()
     @ObservationIgnored private var clipTask: Task<Void, Never>?
     @ObservationIgnored private var artworkCache: [String: NSImage] = [:]
+    @ObservationIgnored private var artworkPrefetch: Task<Void, Never>?
+    @ObservationIgnored private var downloadRequested: Set<String> = []
 
     init() {
         state = StateStore().load()
@@ -288,12 +290,14 @@ final class AppModel {
         clipUnplayable = false
         clipLoading = clipsEnabled
         guard clipsEnabled else { return }
+        prefetchSongs()
         clipTask = Task {
             do {
                 try await music.play(id: song.id, from: song.clipStart)
                 try Task.checkCancellation()
                 clipLoading = false
                 clipStartedAt = Date()
+                prefetchArtwork()
                 try await Task.sleep(for: .seconds(clipLength))
                 clipStartedAt = nil
                 try await music.pause()
@@ -323,6 +327,32 @@ final class AppModel {
         state.clipsEnabled = enabled
         save()
         if !enabled { stopClip() } else if screen == .session { playClipForCurrent() }
+    }
+
+    func cachedArtwork(for song: Song) -> NSImage? { artworkCache[song.id] }
+
+    private static let lookahead = 4
+
+    /// Songs that come after the current one.
+    private var upcoming: [Song] { Array(queue.dropFirst(index + 1).prefix(Self.lookahead)) }
+
+    /// Asks Music to start downloading the next few songs, so they play without a wait when their turn comes.
+    private func prefetchSongs() {
+        let ids = upcoming.map(\.id).filter { downloadRequested.insert($0).inserted }
+        guard !ids.isEmpty else { return }
+        Task { await music.download(ids: ids) }
+    }
+
+    /// Loads covers for the next few songs while the current clip plays, so they are ready when their turn comes.
+    private func prefetchArtwork() {
+        artworkPrefetch?.cancel()
+        let next = upcoming
+        artworkPrefetch = Task {
+            for song in next {
+                if Task.isCancelled { return }
+                _ = await artwork(for: song)
+            }
+        }
     }
 
     func artwork(for song: Song) async -> NSImage? {

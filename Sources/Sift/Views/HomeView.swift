@@ -35,17 +35,11 @@ struct HomeView: View {
                     .panel()
                 }
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 16) {
-                        swipePanel
-                        chancePanel
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                    VStack(spacing: 16) {
-                        swipePanel
-                        chancePanel
-                    }
+                HStack(alignment: .top, spacing: 16) {
+                    swipePanel
+                    chancePanel
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
             .padding(32)
             .frame(maxWidth: 1100)
@@ -65,7 +59,7 @@ struct HomeView: View {
                 .buttonStyle(.primary)
                 .disabled(model.songs.isEmpty)
         }
-        .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .panel(padding: 20)
     }
 
@@ -84,14 +78,16 @@ struct HomeView: View {
                     .buttonStyle(.secondary)
             }
         }
-        .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .panel(padding: 20)
     }
 
     private var header: some View {
         HStack(spacing: 10) {
-            LogoMark(size: 34)
-            Text("Sift").font(Theme.display(26))
+            HStack(spacing: 2) {
+                LogoMark(size: 44, cardsOnly: true)
+                Text("sift").font(.system(size: 30, weight: .black)).tracking(-0.5)
+            }
             Spacer()
             if model.isLoading { ProgressView().controlSize(.small) }
             Button("Refresh") { Task { await model.connect() } }
@@ -105,6 +101,7 @@ struct HomeView: View {
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
+            .pointerCursor()
             .help("Settings")
             .popover(isPresented: $showingSettings, arrowEdge: .bottom) { SettingsView() }
         }
@@ -125,12 +122,12 @@ struct SettingsView: View {
             Divider()
             row("Swap swipe directions", "Left keeps, right deletes") {
                 Toggle("", isOn: Binding(get: { model.state.swapDirections }, set: { model.setSwapDirections($0) }))
-                    .toggleStyle(.switch).labelsHidden()
+                    .toggleStyle(.switch).labelsHidden().pointerCursor()
             }
             Divider()
             row("Play clips", "Hear a short clip on each card") {
                 Toggle("", isOn: Binding(get: { model.clipsEnabled }, set: { model.setClipsEnabled($0) }))
-                    .toggleStyle(.switch).labelsHidden()
+                    .toggleStyle(.switch).labelsHidden().pointerCursor()
             }
             Divider()
             row("Clip length", "How long each clip plays") {

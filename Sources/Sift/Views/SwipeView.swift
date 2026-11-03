@@ -12,17 +12,21 @@ struct SwipeView: View {
 
     private let cardWidth: CGFloat = 300
     private let sidebarWidth: CGFloat = 220
+    private let columnWidth: CGFloat = 280
 
     var body: some View {
         GeometryReader { geo in
             let wide = geo.size.width >= 860
-            let availableWidth = geo.size.width - 56 - (wide ? sidebarWidth + 28 : 0)
+            let large = geo.size.width >= 1300
+            let availableWidth = geo.size.width - 56 - (large ? 2 * (columnWidth + 28) : wide ? sidebarWidth + 28 : 0)
             // The deck is drawn at its natural size and scaled to fill what is left of the window.
-            let availableHeight = geo.size.height - 64 - 56 - 22 - 56
-            let scale = min(1.5, max(0.7, min(availableWidth / cardWidth, availableHeight / cardHeight)))
+            let availableHeight = geo.size.height - 64 - 24 - 56 - 22 - 56
+            let scale = min(large ? 1.7 : 1.5, max(0.7, min(availableWidth / cardWidth, availableHeight / cardHeight)))
             VStack(spacing: 0) {
                 header(compact: !wide)
+                progressBar
                 HStack(alignment: .top, spacing: 28) {
+                    if large { sidebar.frame(width: columnWidth) }
                     VStack(spacing: 22) {
                         if let song = model.current {
                             deck(song: song, scale: scale)
@@ -37,7 +41,7 @@ struct SwipeView: View {
                     }
                     .frame(maxWidth: .infinity)
 
-                    if wide { sidebar.frame(width: sidebarWidth) }
+                    if large { upNext.frame(width: columnWidth) } else if wide { sidebar.frame(width: sidebarWidth) }
                 }
                 .padding(28)
                 Spacer(minLength: 0)
@@ -71,15 +75,47 @@ struct SwipeView: View {
                     Pill("\(model.count(of: .keep))", decision: .keep)
                 }
             }
+            if model.current != nil {
+                Button { model.undo() } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 36, height: 36)
+                        .background(Theme.surface2, in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .pointerCursor()
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(model.history.isEmpty)
+                .opacity(model.history.isEmpty ? 0.4 : 1)
+                .help("Undo (⌘Z)")
+                .padding(.leading, compact ? 8 : 0)
+            }
             if !model.queue.isEmpty {
                 Text("\(min(model.index + 1, model.queue.count)) of \(model.queue.count)")
                     .font(Theme.mono(13))
                     .foregroundStyle(Theme.muted)
-                    .padding(.leading, compact ? 8 : 0)
+                    .padding(.leading, 8)
             }
         }
         .padding(.horizontal, 28)
         .padding(.top, 20)
+    }
+
+    private var progressBar: some View {
+        let total = max(1, model.queue.count)
+        let done = CGFloat(min(model.index, total)) / CGFloat(total)
+        return GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.surface2)
+                Capsule().fill(Theme.brand).frame(width: max(10, geo.size.width * done))
+            }
+        }
+        .frame(height: 10)
+        .padding(.horizontal, 28)
+        .padding(.top, 18)
+        .animation(.spring(duration: 0.4), value: model.index)
+        .opacity(model.queue.isEmpty ? 0 : 1)
     }
 
     private func deck(song: Song, scale: CGFloat) -> some View {
@@ -111,17 +147,12 @@ struct SwipeView: View {
                 tallyRow(.delete)
                 tallyRow(.secondChance)
                 tallyRow(.keep)
-                if model.current != nil {
-                    Button("Undo") { model.undo() }
-                        .buttonStyle(.secondary)
-                        .keyboardShortcut("z", modifiers: .command)
-                        .disabled(model.history.isEmpty)
-                }
             }
             .panel()
 
             Toggle("Play clips", isOn: Binding(get: { model.clipsEnabled }, set: { model.setClipsEnabled($0) }))
                 .toggleStyle(.switch)
+                .pointerCursor()
 
             VStack(alignment: .leading, spacing: 8) {
                 keyHint("←", model.label(for: model.leftDecision))
@@ -133,6 +164,36 @@ struct SwipeView: View {
             }
             .font(.callout)
             .foregroundStyle(Theme.muted)
+        }
+    }
+
+    /// The songs after this one, shown when the window is big enough to have room for them.
+    private var upNext: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Up next").font(.headline)
+                let next = model.queue.dropFirst(model.index + 1).prefix(4)
+                if next.isEmpty {
+                    Text("That's the last one.").font(.callout).foregroundStyle(Theme.muted)
+                }
+                ForEach(Array(next), id: \.id) { song in
+                    HStack(spacing: 12) {
+                        ArtworkView(song: song, loads: false, cornerRadius: 8).frame(width: 44, height: 44)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(song.title).fontWeight(.semibold).lineLimit(1)
+                            Text(song.artist).font(.caption).foregroundStyle(Theme.muted).lineLimit(1)
+                        }
+                    }
+                }
+            }
+            .panel()
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("PENDING DELETE").font(Theme.mono(11)).tracking(1).foregroundStyle(Theme.muted)
+                Text("\(model.state.pendingDelete.count) songs").font(Theme.display(24))
+                Text("They stay in your library until you confirm.").font(.caption).foregroundStyle(Theme.muted)
+            }
+            .panel()
         }
     }
 
@@ -203,7 +264,21 @@ struct SongCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ArtworkView(song: song, loads: isTop)
+                .overlay {
+                    if isTop && model.clipLoading {
+                        ZStack {
+                            Color.black.opacity(0.45)
+                            VStack(spacing: 14) {
+                                EqualizerView()
+                                Text("Loading song…").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                            }
+                        }
+                        .transition(.opacity)
+                    }
+                }
+                .animation(.easeOut(duration: 0.15), value: model.clipLoading)
                 .onTapGesture { if isTop { model.playClipForCurrent() } }
+                .pointerCursor()
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.title).font(Theme.display(20)).lineLimit(2)
                 Text([song.artist, song.album].filter { !$0.isEmpty }.joined(separator: " · "))
@@ -301,6 +376,7 @@ private struct ClipBar: View {
                 Spacer(minLength: 0)
                 Button("Skip") { model.skipCurrent() }
                     .buttonStyle(.plain)
+                    .pointerCursor()
                     .font(.system(size: 12, weight: .bold))
                     .underline()
             }
@@ -328,14 +404,7 @@ private struct ClipBar: View {
                 HStack {
                     Text("clip from \(Format.duration(song.clipStart))")
                     Spacer()
-                    if active && model.clipLoading {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.mini)
-                            Text("Loading song…")
-                        }
-                    } else {
-                        Text("\(Format.duration(min(elapsed, model.clipLength))) / \(Format.duration(model.clipLength))")
-                    }
+                    Text("\(Format.duration(min(elapsed, model.clipLength))) / \(Format.duration(model.clipLength))")
                 }
                 .font(Theme.mono(11))
                 .foregroundStyle(Theme.muted)
@@ -350,7 +419,8 @@ private struct SessionDoneView: View {
     var body: some View {
         let chance = model.sessionKind == .secondChance
         VStack(spacing: 14) {
-            Text(model.queue.isEmpty ? "Nothing to swipe" : chance ? "Round done" : "Session done").font(Theme.display(26))
+            if !model.queue.isEmpty { Mascot(mood: .cheer, size: 130) }
+            Text(model.queue.isEmpty ? "Nothing to swipe" : chance ? "Round done!" : "Session complete!").font(Theme.display(26))
             Text(model.queue.isEmpty
                  ? "No songs match this filter right now. Try another one on the home screen."
                  : chance

@@ -3,7 +3,7 @@ import SwiftUI
 struct ReviewView: View {
     @Environment(AppModel.self) private var model
     @State private var selected: Set<String> = []
-    @State private var backup = true
+    @State private var backup = false
     @State private var confirming = false
     @State private var working = false
 
@@ -31,7 +31,7 @@ struct ReviewView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(songs) { song in
                             HStack(spacing: 12) {
-                                Toggle("", isOn: binding(for: song.id))
+                                Toggle("", isOn: binding(for: song.id)).pointerCursor()
                                     .toggleStyle(.checkbox)
                                     .labelsHidden()
                                 SongRow(song: song, detail: detail(for: song)) {
@@ -50,7 +50,7 @@ struct ReviewView: View {
             }
 
             HStack(spacing: 10) {
-                Toggle("Save a backup list (CSV) to Documents first", isOn: $backup)
+                Toggle("Save a backup list (CSV) to Documents first", isOn: $backup).pointerCursor()
                     .toggleStyle(.checkbox)
                 Spacer()
                 Button("Not now") { model.screen = .home }

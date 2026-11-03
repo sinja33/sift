@@ -3,13 +3,21 @@ import SwiftUI
 /// The Sift mark. See LogoDrawing for how it is drawn.
 struct LogoMark: View {
     var size: CGFloat = 96
+    /// Draw only the cards, with no tile behind them.
+    var cardsOnly = false
 
     var body: some View {
         Canvas { context, canvasSize in
-            LogoDrawing.draw(in: &context, rect: CGRect(origin: .zero, size: canvasSize))
+            if cardsOnly {
+                // The stack spans about x 17...79, y 11...85 on the 96 grid, centred; grow it to fill the frame.
+                let side = canvasSize.width * 1.2
+                let rect = CGRect(x: (canvasSize.width - side) / 2, y: (canvasSize.height - side) / 2, width: side, height: side)
+                LogoDrawing.draw(in: &context, rect: rect, tile: false)
+            } else {
+                LogoDrawing.draw(in: &context, rect: CGRect(origin: .zero, size: canvasSize))
+            }
         }
         .frame(width: size, height: size)
-        .shadow(color: Color.hex(0x3B4CF5).opacity(size > 60 ? 0.28 : 0), radius: 12, y: 8)
         .accessibilityLabel("Sift")
     }
 }
@@ -69,6 +77,7 @@ struct ActionButton: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .pointerCursor()
         .help(decision.label)
     }
 }
@@ -88,7 +97,7 @@ struct HealthRing: View {
         ZStack {
             Circle()
                 .fill(Theme.surface)
-                .shadow(color: Theme.brand.opacity(0.12), radius: 14, y: 6)
+                .overlay(Circle().stroke(Theme.line))
             Circle().stroke(Theme.surface2, lineWidth: line).padding(line / 2 + 6)
 
             if loading {
@@ -176,6 +185,7 @@ struct PillPicker<Option: Hashable>: View {
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .pointerCursor()
             }
         }
         .padding(4)
@@ -231,9 +241,14 @@ struct ArtworkView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .task(id: song.id) {
-                image = nil
-                guard loads else { return }
+                image = model.cachedArtwork(for: song)
+                guard loads, image == nil else { return }
                 image = await model.artwork(for: song)
+            }
+            // Fetching a cover can queue behind the song starting; try again once that is done.
+            .onChange(of: model.clipLoading) { _, loading in
+                guard loads, !loading, image == nil else { return }
+                Task { image = await model.artwork(for: song) }
             }
     }
 
@@ -264,5 +279,27 @@ struct SongRow<Trailing: View>: View {
             trailing()
         }
         .padding(.vertical, 8)
+    }
+}
+
+/// Five white bars that bounce like a level meter. Shown on the cover while a song loads.
+struct EqualizerView: View {
+    var height: CGFloat = 52
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(alignment: .bottom, spacing: 6) {
+                ForEach(0..<5, id: \.self) { i in
+                    // Each bar runs on its own phase and speed so they never move in step.
+                    let wave = (sin(t * (5.2 + Double(i) * 0.7) + Double(i) * 1.9) + 1) / 2
+                    Capsule()
+                        .fill(.white)
+                        .frame(width: 9, height: height * (0.22 + 0.78 * wave))
+                }
+            }
+            .frame(height: height, alignment: .bottom)
+        }
+        .accessibilityLabel("Loading")
     }
 }

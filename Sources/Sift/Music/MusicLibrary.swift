@@ -38,6 +38,12 @@ struct MusicLibrary {
         if result == "unplayable" { throw OsaError(message: "Music couldn't play this song. It may not be downloaded or available right now.") }
     }
 
+    /// Starts downloading cloud songs so they are ready by the time they come up.
+    func download(ids: [String]) async {
+        guard !ids.isEmpty else { return }
+        _ = try? await Osa.run(Scripts.download, language: .appleScript, args: ids)
+    }
+
     func pause() async throws {
         _ = try await Osa.run(Scripts.pause, language: .appleScript)
     }
