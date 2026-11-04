@@ -75,10 +75,11 @@ The Home screen offers an artist you rarely play, and you can go through all of 
 
 ## Covers, updates, sound and privacy
 
-Sift never uploads your library. It goes online in three small ways, and only to look things up:
+Sift never uploads your library. It goes online in a few small ways, and only to look things up:
 
 - **Artist photos** from Deezer, sending only the artist's name (see above).
 - **Missing album covers** from Apple's public iTunes Search, sending only the artist and song title. Covers are cached in `~/Library/Caches/Sift`.
+- **Clip previews** from the same iTunes Search, sending only the artist and title. A short preview is a file of about 1 MB kept in the caches folder, so it plays at once, nothing is downloaded into your Music library and the songs get no extra plays. Songs without a preview play through Music instead.
 - **Update check**: once per launch Sift asks GitHub for the newest release number and shows a banner when there is one. Turn it off in Settings.
 
 If you are offline, Sift still works. Covers and photos just show a placeholder.

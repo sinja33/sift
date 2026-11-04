@@ -22,7 +22,6 @@ struct RootView: View {
             }
         }
         .foregroundStyle(Theme.ink)
-        .preferredColorScheme(model.colorScheme)
         .animation(.easeOut(duration: 0.2), value: model.toast)
         .animation(.smooth(duration: 0.35), value: model.screen)
         .alert("Something went wrong", isPresented: errorShown) {

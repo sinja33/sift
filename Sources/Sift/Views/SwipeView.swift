@@ -446,7 +446,7 @@ private struct ClipBar: View {
                 }
                 .frame(height: 4)
                 HStack {
-                    Text("clip from \(Format.duration(song.clipStart))")
+                    Text(model.clipIsPreview ? "Apple preview" : "clip from \(Format.duration(song.clipStart))")
                     Spacer()
                     Text("\(Format.duration(min(elapsed, model.clipLength))) / \(Format.duration(model.clipLength))")
                 }

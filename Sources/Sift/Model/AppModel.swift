@@ -88,6 +88,26 @@ final class AppModel {
     @ObservationIgnored private var offeredArtists: Set<String> = []
     @ObservationIgnored private var warmedArtists: Set<String> = []
 
+    enum PauseKey { case swipe, artist, chance }
+
+    /// A session you left part-way through, so Home can offer to pick it up again.
+    struct PausedSession {
+        let kind: SessionKind
+        let artist: String?
+        let queue: [Song]
+        let index: Int
+        let history: [(song: Song, decision: Decision)]
+        let chanceItems: [String: SecondChanceItem]
+        let chanceChoices: [String: SecondChanceChoice]
+        let offeredArtists: Set<String>
+
+        var left: Int { queue.count - index }
+        func count(of decision: Decision) -> Int { history.filter { $0.decision == decision }.count }
+    }
+
+    /// One unfinished session per kind: the main session, an artist session and a Second Chance round.
+    var paused: [PauseKey: PausedSession] = [:]
+
     struct ArtistStop: Equatable {
         let artist: String
         let deleted: Int
@@ -101,6 +121,8 @@ final class AppModel {
     var clipLoading = false
     /// True when Music could not play the song at all.
     var clipUnplayable = false
+    /// True when the clip is Apple's short preview, false when it plays from the song in Music.
+    var clipIsPreview = false
     var clipLength: Double { state.clipSeconds }
 
     let secondChanceWait: TimeInterval = 21 * 86_400
@@ -111,12 +133,17 @@ final class AppModel {
     @ObservationIgnored private var artworkCache: [String: NSImage] = [:]
     @ObservationIgnored private var artworkMisses: Set<String> = []
     @ObservationIgnored private var artworkPrefetch: Task<Void, Never>?
-    @ObservationIgnored private var downloadRequested: Set<String> = []
+    @ObservationIgnored private let clipPlayer = ClipPlayer()
+    @ObservationIgnored private var previewPrefetch: Task<Void, Never>?
+    /// True while Music might still be playing, so the first preview pauses it.
+    @ObservationIgnored private var musicMayBePlaying = true
     @ObservationIgnored private var artistImageCache: [String: NSImage] = [:]
     @ObservationIgnored private var artistImageMisses: Set<String> = []
 
     init() {
         state = StateStore().load()
+        applyAppearance()
+        Previews.trim()
     }
 
     // MARK: Library
@@ -157,6 +184,44 @@ final class AppModel {
         await connect()
         await checkForUpdate()
     }
+
+    // MARK: Progress
+
+    static func dayKey(_ date: Date = Date()) -> String {
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    private func bumpSwiped(by amount: Int) {
+        let key = Self.dayKey()
+        state.swipedByDay[key] = max(0, (state.swipedByDay[key] ?? 0) + amount)
+    }
+
+    /// Days in a row with at least one swipe. It stays alive through today until midnight tomorrow.
+    var streakDays: Int {
+        let calendar = Calendar.current
+        var day = Date()
+        if (state.swipedByDay[Self.dayKey(day)] ?? 0) == 0 {
+            day = calendar.date(byAdding: .day, value: -1, to: day) ?? day
+        }
+        var count = 0
+        while (state.swipedByDay[Self.dayKey(day)] ?? 0) > 0 {
+            count += 1
+            day = calendar.date(byAdding: .day, value: -1, to: day) ?? day
+        }
+        return count
+    }
+
+    private func lastSevenDays<T: Numeric>(_ values: [String: T]) -> T {
+        let calendar = Calendar.current
+        return (0..<7).reduce(0) { total, offset in
+            let day = calendar.date(byAdding: .day, value: -offset, to: Date()) ?? Date()
+            return total + (values[Self.dayKey(day)] ?? 0)
+        }
+    }
+
+    var weekSwiped: Int { lastSevenDays(state.swipedByDay) }
+    var weekDeleted: Int { lastSevenDays(state.deletedByDay) }
 
     // MARK: Updates
 
@@ -235,13 +300,16 @@ final class AppModel {
     func setAppearance(_ value: String) {
         state.appearance = value
         save()
+        applyAppearance()
     }
 
-    var colorScheme: ColorScheme? {
+    /// Sets the look of the whole app. SwiftUI's preferredColorScheme(nil) does not return to
+    /// the Mac's setting once light or dark was picked, so the app's appearance is set directly instead.
+    private func applyAppearance() {
         switch state.appearance {
-        case "light": .light
-        case "dark": .dark
-        default: nil
+        case "light": NSApplication.shared.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+        default: NSApplication.shared.appearance = nil
         }
     }
 
@@ -258,6 +326,7 @@ final class AppModel {
     // MARK: Session
 
     func startSession() {
+        paused[.swipe] = nil
         sessionKind = .sift
         sessionArtist = nil
         queue = Scoring.queue(from: songs, state: state, filter: filter, limit: sessionSize)
@@ -273,12 +342,46 @@ final class AppModel {
 
     func endSession() {
         stopClip()
+        pauseIfUnfinished()
         artistStop = nil
         sessionKind = .sift
         sessionArtist = nil
         screen = .home
         ensureSpotlight()
     }
+
+    private var currentPauseKey: PauseKey {
+        sessionKind == .secondChance ? .chance : sessionArtist != nil ? .artist : .swipe
+    }
+
+    /// Keeps the session when you leave it with songs still to go.
+    private func pauseIfUnfinished() {
+        guard screen == .session, index > 0, index < queue.count else { return }
+        paused[currentPauseKey] = PausedSession(
+            kind: sessionKind, artist: sessionArtist, queue: queue, index: index, history: history,
+            chanceItems: chanceItems, chanceChoices: chanceChoices, offeredArtists: offeredArtists)
+    }
+
+    func resume(_ key: PauseKey) {
+        guard let saved = paused[key] else { return }
+        paused[key] = nil
+        // Songs deleted in the meantime are dropped from what is left.
+        let ids = Set(songs.map(\.id))
+        let ahead = saved.queue[saved.index...].filter { ids.contains($0.id) }
+        sessionKind = saved.kind
+        sessionArtist = saved.artist
+        queue = Array(saved.queue[..<saved.index]) + ahead
+        index = saved.index
+        history = saved.history
+        chanceItems = saved.chanceItems
+        chanceChoices = saved.chanceChoices
+        offeredArtists = saved.offeredArtists
+        artistStop = nil
+        screen = .session
+        playClipForCurrent()
+    }
+
+    func discardPaused(_ key: PauseKey) { paused[key] = nil }
 
     // MARK: Artist spotlight
 
@@ -322,6 +425,7 @@ final class AppModel {
         guard let artist = spotlightArtist else { return }
         let list = Array(songs(by: artist).prefix(60))
         guard !list.isEmpty else { pickSpotlight(); return }
+        paused[.artist] = nil
         sessionKind = .sift
         sessionArtist = artist
         queue = list
@@ -349,6 +453,8 @@ final class AppModel {
             }
             history.append((song, decision))
             index += 1
+            bumpSwiped(by: 1)
+            save()
             feedback(.decision(decision))
             if current == nil { feedback(.done) }
             playClipForCurrent()
@@ -364,6 +470,7 @@ final class AppModel {
         }
         history.append((song, decision))
         index += 1
+        bumpSwiped(by: 1)
         save()
         feedback(.decision(decision))
         if decision == .delete { warmArtist(after: song) }
@@ -385,10 +492,13 @@ final class AppModel {
         let deleted = history.filter { $0.decision == .delete && Scoring.artistKey($0.song.artist) == key }.count
         guard deleted >= 2 else { return }
         warmedArtists.insert(key)
-        let first = Array(songs(by: song.artist).prefix(Self.lookahead + 1))
-        let ids = first.map(\.id).filter { downloadRequested.insert($0).inserted }
-        if !ids.isEmpty { Task { await music.download(ids: ids) } }
-        Task { for song in first { _ = await artwork(for: song) } }
+        let first = Array(songs(by: song.artist).prefix(Self.lookahead))
+        Task {
+            for song in first {
+                _ = await Previews.file(for: song)
+                _ = await artwork(for: song)
+            }
+        }
     }
 
     /// After the third deletion by one artist, offers to go through the rest of their songs.
@@ -425,8 +535,10 @@ final class AppModel {
         guard artistStop == nil else { return }
         guard let last = history.popLast() else { return }
         let id = last.song.id
+        bumpSwiped(by: -1)
         if sessionKind == .secondChance {
             chanceChoices[id] = nil
+            save()
             index = queue.firstIndex { $0.id == id } ?? max(0, index - 1)
             playClipForCurrent()
             return
@@ -455,7 +567,6 @@ final class AppModel {
             added: Date(), playsWhenAdded: song.playCount, skipsWhenAdded: song.skipCount, round: round)
         let id = song.id
         Task { await perform { try await self.music.addToPlaylist(ids: [id], named: MusicLibrary.secondChancePlaylist) } }
-        showToast("Added to Second Chance")
     }
 
     // MARK: Clips
@@ -466,12 +577,39 @@ final class AppModel {
 
     func playClip(for song: Song) {
         clipTask?.cancel()
+        clipPlayer.stop()
         clipStartedAt = nil
         clipUnplayable = false
         clipLoading = clipsEnabled
         guard clipsEnabled else { return }
-        prefetchSongs()
+        prefetchPreviews()
         clipTask = Task {
+            // Apple's preview first: it is a small file that is usually fetched already, so it starts at once.
+            if let file = await Previews.file(for: song) {
+                guard !Task.isCancelled else { return }
+                if musicMayBePlaying {
+                    musicMayBePlaying = false
+                    Task { try? await music.pause() }
+                }
+                do {
+                    try clipPlayer.play(file)
+                    clipIsPreview = true
+                    clipLoading = false
+                    clipStartedAt = Date()
+                    prefetchArtwork()
+                    try await Task.sleep(for: .seconds(clipLength))
+                    clipPlayer.stop()
+                    clipStartedAt = nil
+                    return
+                } catch is CancellationError {
+                    return
+                } catch {
+                    // The file could not be played; fall back to the song in Music.
+                }
+            }
+            guard !Task.isCancelled else { return }
+            clipIsPreview = false
+            musicMayBePlaying = true
             do {
                 try await music.play(id: song.id, from: song.clipStart)
                 try Task.checkCancellation()
@@ -500,10 +638,11 @@ final class AppModel {
     func stopClip() {
         clipTask?.cancel()
         clipTask = nil
+        clipPlayer.stop()
         clipStartedAt = nil
         clipLoading = false
         clipUnplayable = false
-        Task { try? await music.pause() }
+        if musicMayBePlaying { Task { try? await music.pause() } }
     }
 
     func setClipsEnabled(_ enabled: Bool) {
@@ -514,16 +653,28 @@ final class AppModel {
 
     func cachedArtwork(for song: Song) -> NSImage? { artworkCache[song.id] }
 
-    private static let lookahead = 4
+    private static let lookahead = 6
 
     /// Songs that come after the current one.
     private var upcoming: [Song] { Array(queue.dropFirst(index + 1).prefix(Self.lookahead)) }
 
-    /// Asks Music to start downloading the next few songs, so they play without a wait when their turn comes.
-    private func prefetchSongs() {
-        let ids = upcoming.map(\.id).filter { downloadRequested.insert($0).inserted }
-        guard !ids.isEmpty else { return }
-        Task { await music.download(ids: ids) }
+    /// Fetches the previews of songs that will probably come up soon, such as the first songs of the next session.
+    /// They are small files in the caches folder. Nothing is downloaded into the Music library.
+    func warm(_ songs: [Song]) {
+        guard clipsEnabled else { return }
+        Task { for song in songs { _ = await Previews.file(for: song) } }
+    }
+
+    /// Fetches the previews for the next few songs while the current clip plays, so they start at once.
+    private func prefetchPreviews() {
+        previewPrefetch?.cancel()
+        let next = upcoming
+        previewPrefetch = Task {
+            for song in next {
+                if Task.isCancelled { return }
+                _ = await Previews.file(for: song)
+            }
+        }
     }
 
     /// Loads covers for the next few songs while the current clip plays, so they are ready when their turn comes.
@@ -572,6 +723,9 @@ final class AppModel {
             state.pendingDelete = []
             songs.removeAll { selected.contains($0.id) }
             state.removedCount += deleted
+            state.removedBytes += toDelete.reduce(0) { $0 + $1.diskBytes }
+            state.removedSeconds += toDelete.reduce(0) { $0 + $1.duration }
+            state.deletedByDay[Self.dayKey(), default: 0] += deleted
             save()
             showToast(deleted == 1 ? "Deleted 1 song" : "Deleted \(deleted) songs")
             return true
@@ -592,6 +746,7 @@ final class AppModel {
             showToast(all ? "There are no songs in Second Chance yet" : "No Second Chance songs are due yet")
             return
         }
+        paused[.chance] = nil
         sessionKind = .secondChance
         sessionArtist = nil
         chanceItems = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })

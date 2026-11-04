@@ -47,7 +47,7 @@ enum CoverLookup {
     }
 
     /// Lowercase letters and digits only, so punctuation and spacing differences do not matter.
-    private static func plain(_ text: String) -> String {
+    static func plain(_ text: String) -> String {
         String(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
     }
 

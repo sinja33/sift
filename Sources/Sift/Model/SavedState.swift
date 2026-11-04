@@ -17,6 +17,12 @@ struct SavedState: Codable {
     /// Songs you swiped away that are waiting on the review screen.
     var pendingDelete: [String] = []
     var removedCount = 0
+    /// Space and listening time of the songs deleted so far. Songs removed before these were tracked are not counted.
+    var removedBytes = 0
+    var removedSeconds: Double = 0
+    /// Songs you swiped and songs you deleted, per day ("yyyy-MM-dd"). They feed the streak and the week summary.
+    var swipedByDay: [String: Int] = [:]
+    var deletedByDay: [String: Int] = [:]
     /// When true, swiping left keeps and swiping right deletes.
     var swapDirections = false
     var clipsEnabled = true
@@ -39,6 +45,10 @@ struct SavedState: Codable {
         secondChance = try c.decodeIfPresent([String: ChanceEntry].self, forKey: .secondChance) ?? [:]
         pendingDelete = try c.decodeIfPresent([String].self, forKey: .pendingDelete) ?? []
         removedCount = try c.decodeIfPresent(Int.self, forKey: .removedCount) ?? 0
+        removedBytes = try c.decodeIfPresent(Int.self, forKey: .removedBytes) ?? 0
+        removedSeconds = try c.decodeIfPresent(Double.self, forKey: .removedSeconds) ?? 0
+        swipedByDay = try c.decodeIfPresent([String: Int].self, forKey: .swipedByDay) ?? [:]
+        deletedByDay = try c.decodeIfPresent([String: Int].self, forKey: .deletedByDay) ?? [:]
         swapDirections = try c.decodeIfPresent(Bool.self, forKey: .swapDirections) ?? false
         clipsEnabled = try c.decodeIfPresent(Bool.self, forKey: .clipsEnabled) ?? true
         clipSeconds = try c.decodeIfPresent(Double.self, forKey: .clipSeconds) ?? 15

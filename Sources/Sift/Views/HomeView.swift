@@ -3,12 +3,17 @@ import SwiftUI
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     @State private var showingSettings = false
+    /// The first songs the next session would show, for the cover mosaic on the session panel.
+    @State private var previewSongs: [Song] = []
 
     /// False until the first read of the library is done.
     private var loaded: Bool { !(model.isLoading && model.songs.isEmpty) }
 
     var body: some View {
         @Bindable var model = model
+        // Like the swipe screen, the layout depends on the window size: from 1100 wide the second row grows into full panels.
+        GeometryReader { geo in
+        let roomy = geo.size.width >= 1100
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
                 header
@@ -30,30 +35,27 @@ struct HomeView: View {
                         .shimmer(!loaded)
                         .animation(.smooth(duration: 0.4), value: loaded)
                     }
+                    if loaded {
+                        Spacer(minLength: 16)
+                        spaceSaved.transition(.opacity)
+                    }
                 }
                 }
 
                 if loaded && model.songs.isEmpty {
                     emptyOrError.reveal()
                 } else if loaded {
-                    // The three panels arrive together, one after the other.
-                    // A second panel opens next to the session panel while songs wait to be deleted.
+                    // The two main panels arrive together, then the quiet strips for anything that needs a look.
                     HStack(alignment: .top, spacing: 16) {
                         swipePanel
-                        if !model.pendingDeleteSongs.isEmpty { deletePanel.transition(.opacity.combined(with: .scale(scale: 0.96))) }
+                        spotlightPanel
                     }
                     .fixedSize(horizontal: false, vertical: true)
-                    .animation(.smooth(duration: 0.4), value: model.state.pendingDelete.isEmpty)
                     .reveal(delay: 0.05)
 
-                    HStack(alignment: .top, spacing: 16) {
-                        spotlightPanel
-                        chancePanel
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                    .reveal(delay: 0.15)
+                    // The page spaces sections 32 apart; the strips sit closer, like the gap between the two panels above.
+                    Group { if roomy { bigRow } else { strips } }.padding(.top, -16).reveal(delay: 0.15)
                 } else {
-                    SkeletonPanel(height: 130)
                     HStack(alignment: .top, spacing: 16) {
                         SkeletonPanel(height: 170)
                         SkeletonPanel(height: 170)
@@ -66,6 +68,13 @@ struct HomeView: View {
             .animation(.smooth(duration: 0.35), value: model.availableUpdate)
         }
         .onAppear { model.ensureSpotlight() }
+        .task(id: "\(model.songs.count)-\(model.filter.rawValue)-\(model.state.pendingDelete.count)-\(model.state.kept.count)-\(model.state.secondChance.count)") {
+            previewSongs = Scoring.queue(from: model.songs, state: model.state, filter: model.filter, limit: 8)
+            // Get the first songs of the next session ready while Home is open, so starting it has little to wait for.
+            model.warm(Array(previewSongs.prefix(3)))
+            model.warm(Array(model.spotlightSongs.prefix(3)))
+        }
+        }
     }
 
     private func updateBanner(_ release: UpdateCheck.Release) -> some View {
@@ -104,7 +113,32 @@ struct HomeView: View {
         }
     }
 
+    /// What cleaning up is for: the disk space freed by the songs you have deleted with Sift.
+    private var spaceSaved: some View {
+        let bytes = model.state.removedBytes
+        let size = bytes == 0 ? "0 MB" : ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+        return HStack(spacing: 6) {
+            Image(systemName: "arrow.down.to.line").font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.brand)
+            Text(size).font(Theme.mono(15)).fontWeight(.bold).contentTransition(.numericText())
+            Text("saved").foregroundStyle(Theme.muted)
+        }
+        .font(.callout)
+        .help("Disk space freed by songs you deleted with Sift")
+    }
+
     @ViewBuilder private var spotlightPanel: some View {
+        if let saved = model.paused[.artist], let artist = saved.artist {
+            pickupPanel(saved, key: .artist, label: "PICK UP · ARTIST", title: artist, visual: { ArtistAvatar(artist: artist) }) {
+                model.discardPaused(.artist)
+                model.spotlightArtist = artist
+                model.startArtistSession()
+            }
+        } else {
+            spotlightIdle
+        }
+    }
+
+    @ViewBuilder private var spotlightIdle: some View {
         let songs = model.spotlightSongs
         if let artist = model.spotlightArtist, !songs.isEmpty {
             let never = songs.filter { $0.playCount == 0 }.count
@@ -114,7 +148,7 @@ struct HomeView: View {
                 title: artist,
                 detail: "\(songs.count) songs · \(never) never played",
                 description: songs.count > 3 ? "Starting with \(titles) and \(songs.count - 3) more." : "Starting with \(titles).",
-                visual: { ArtistIcon() },
+                visual: { ArtistAvatar(artist: artist) },
                 buttons: {
                     Button("Go through their songs") { model.startArtistSession() }.buttonStyle(.primary)
                     Button { model.pickSpotlight() } label: { Label("Pick another artist", systemImage: "shuffle") }
@@ -123,7 +157,34 @@ struct HomeView: View {
         }
     }
 
-    private var swipePanel: some View {
+    @ViewBuilder private var swipePanel: some View {
+        if let saved = model.paused[.swipe] {
+            pickupPanel(saved, key: .swipe, label: "PICK UP · SWIPE SESSION", title: "Back to your session",
+                        visual: { CoverMosaic(songs: Array(saved.queue[saved.index...]), size: 72) { SwipeIcon() } }) {
+                model.discardPaused(.swipe)
+                model.startSession()
+            }
+        } else {
+            startPanel
+        }
+    }
+
+    /// An unfinished session, with a way to carry on or begin again.
+    private func pickupPanel<Visual: View>(_ saved: AppModel.PausedSession, key: AppModel.PauseKey, label: String, title: String,
+                                           @ViewBuilder visual: () -> Visual, startOver: @escaping () -> Void) -> some View {
+        FeaturePanel(
+            label: label,
+            title: title,
+            detail: "\(saved.left) of \(saved.queue.count) left",
+            description: "So far: \(saved.count(of: .delete)) to delete, \(saved.count(of: .secondChance)) in Second Chance, \(saved.count(of: .keep)) kept.",
+            visual: visual,
+            buttons: {
+                Button("Continue") { model.resume(key) }.buttonStyle(.primary)
+                Button("Start over", action: startOver).buttonStyle(.secondary)
+            })
+    }
+
+    private var startPanel: some View {
         @Bindable var model = model
         let blurb: String
         switch model.filter {
@@ -136,7 +197,7 @@ struct HomeView: View {
             title: "Clean up \(model.sessionSize) songs",
             detail: "\(model.neverPlayedCount.formatted()) never played · about 3 minutes",
             description: blurb,
-            visual: { SwipeIcon() },
+            visual: { CoverMosaic(songs: previewSongs) { SwipeIcon() } },
             buttons: {
                 Button("Start session") { model.startSession() }
                     .buttonStyle(.primary)
@@ -166,57 +227,96 @@ struct HomeView: View {
             })
     }
 
-    private var deletePanel: some View {
-        let songs = model.pendingDeleteSongs
-        let artists = Set(songs.map { Scoring.artistKey($0.artist) }).count
-        return FeaturePanel(
-            label: "READY TO DELETE",
-            title: songs.count == 1 ? "1 song marked" : "\(songs.count) songs marked",
-            detail: "\(Format.totalTime(songs)) · \(artists) \(artists == 1 ? "artist" : "artists")",
-            description: "They stay in your library until you confirm. Look over the list first, and untick anything you want to keep.",
-            visual: { DeleteIcon() },
-            buttons: {
-                Button("Review and delete") { model.screen = .review }.buttonStyle(.danger)
-                Button("Clear list") { model.clearPending() }.buttonStyle(.secondary)
-            })
-    }
-
-    private var chancePanel: some View {
+    /// Songs waiting to be deleted and Second Chance songs show up here only when there is something to look at.
+    /// Each keeps half the width, in line with the panels above, so a lone strip does not stretch.
+    private var strips: some View {
+        let pending = model.pendingDeleteSongs
         let due = model.secondChanceDueCount
         let total = model.state.secondChance.count
-        let title = total == 0 ? "Nothing waiting yet" : due > 0 ? "Round ready" : "\(total) songs waiting"
-        let detail: String
-        if total == 0 {
-            detail = "Swipe up on a song to add it"
-        } else if due > 0 {
-            detail = "\(due) due now · \(total) in the playlist"
-        } else if let days = daysUntilNextRound {
-            detail = days <= 1 ? "Next round opens tomorrow" : "Next round opens in \(days) days"
-        } else {
-            detail = "\(total) in the playlist"
+        let resumed = model.paused[.chance]
+        let chanceShown = total > 0 || resumed != nil
+        return HStack(spacing: 16) {
+            if !pending.isEmpty {
+                QuietStrip(
+                    title: pending.count == 1 ? "1 song marked for deletion" : "\(pending.count) songs marked for deletion",
+                    detail: "They stay in your library until you confirm",
+                    button: "Review and delete",
+                    visual: { CoverMosaic(songs: pending, size: 40) { DeleteIcon(size: 40) } },
+                    action: { model.screen = .review })
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+            if chanceShown {
+                QuietStrip(
+                    title: resumed != nil ? "Second Chance round paused" : due > 0 ? "Second Chance round ready" : "\(total) songs in Second Chance",
+                    detail: resumed.map { "\($0.left) of \($0.queue.count) left" } ?? chanceDetail(due: due, total: total),
+                    button: resumed != nil ? "Continue" : due > 0 ? "Review round" : "Go through now",
+                    visual: { CoverMosaic(songs: model.secondChanceRound(all: true).map(\.song), size: 40) { SecondChanceIcon(size: 40) } },
+                    action: { if resumed != nil { model.resume(.chance) } else { Task { await model.openSecondChance(all: due == 0) } } })
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+            if pending.isEmpty != !chanceShown { GapTip(text: pending.isEmpty ? Self.deleteTip : Self.chanceTip) }
         }
-        return FeaturePanel(
-            label: "SECOND CHANCE",
-            title: title,
-            detail: detail,
-            description: chanceText(due: due, total: total),
-            visual: { SecondChanceIcon() },
-            buttons: {
-                if total == 0 {
-                    Button("Start a session") { model.startSession() }
-                        .buttonStyle(.secondary)
-                        .disabled(model.songs.isEmpty)
-                } else {
-                    if due > 0 {
-                        Button("Review round") { Task { await model.openSecondChance() } }
-                            .buttonStyle(.primary)
-                    }
-                    if due < total {
-                        Button(due > 0 ? "Go through all \(total)" : "Go through them now") { Task { await model.openSecondChance(all: true) } }
-                            .buttonStyle(due > 0 ? .secondary : .primary)
-                    }
-                }
-            })
+        .animation(.smooth(duration: 0.4), value: pending.isEmpty)
+        .animation(.smooth(duration: 0.4), value: total)
+    }
+
+    /// Shown in the empty half when only one of the two sections has something in it.
+    private static let deleteTip = "Songs you swipe away wait here until you confirm. Nothing is deleted before that."
+    private static let chanceTip = "Swipe up on a song to give it a Second Chance instead of deleting it."
+
+    /// The same two sections as full panels, for when there is room.
+    private var bigRow: some View {
+        let pending = model.pendingDeleteSongs
+        let due = model.secondChanceDueCount
+        let total = model.state.secondChance.count
+        let resumed = model.paused[.chance]
+        let chanceShown = total > 0 || resumed != nil
+        return HStack(alignment: .top, spacing: 16) {
+            if !pending.isEmpty {
+                FeaturePanel(
+                    label: "READY TO DELETE",
+                    title: pending.count == 1 ? "1 song marked" : "\(pending.count) songs marked",
+                    detail: "\(Format.totalTime(pending)) · \(Set(pending.map { Scoring.artistKey($0.artist) }).count) artists",
+                    description: "They stay in your library until you confirm. Look over the list first, and untick anything you want to keep.",
+                    visual: { CoverMosaic(songs: pending) { DeleteIcon() } },
+                    buttons: {
+                        Button("Review and delete") { model.screen = .review }.buttonStyle(.secondary)
+                        Button("Clear list") { model.clearPending() }.buttonStyle(.secondary)
+                    })
+            }
+            if chanceShown {
+                FeaturePanel(
+                    label: "SECOND CHANCE",
+                    title: resumed != nil ? "Round paused" : due > 0 ? "Round ready" : "\(total) songs waiting",
+                    detail: resumed.map { "\($0.left) of \($0.queue.count) left" } ?? chanceDetail(due: due, total: total),
+                    description: resumed != nil
+                        ? "You went through \(resumed?.index ?? 0) so far. Pick up where you stopped."
+                        : due > 0
+                        ? "\(due) songs have waited 3 weeks in the Second Chance playlist. See which ones you played."
+                        : "\(total) songs are waiting in the Second Chance playlist. A round opens after 3 weeks, but you can go through them any time.",
+                    visual: { CoverMosaic(songs: model.secondChanceRound(all: true).map(\.song)) { SecondChanceIcon() } },
+                    buttons: {
+                        if resumed != nil {
+                            Button("Continue") { model.resume(.chance) }.buttonStyle(.secondary)
+                            Button("Start over") { model.discardPaused(.chance) }.buttonStyle(.secondary)
+                        } else if due > 0 {
+                            Button("Review round") { Task { await model.openSecondChance() } }.buttonStyle(.secondary)
+                        }
+                        if resumed == nil && due < total {
+                            Button(due > 0 ? "Go through all \(total)" : "Go through them now") { Task { await model.openSecondChance(all: true) } }
+                                .buttonStyle(.secondary)
+                        }
+                    })
+            }
+            if pending.isEmpty != !chanceShown { GapTip(text: pending.isEmpty ? Self.deleteTip : Self.chanceTip, tall: true) }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func chanceDetail(due: Int, total: Int) -> String {
+        if due > 0 { return "\(due) due now · \(total) in the playlist" }
+        if let days = daysUntilNextRound { return days <= 1 ? "Next round opens tomorrow" : "Next round opens in \(days) days" }
+        return "\(total) in the playlist"
     }
 
     /// Whole days until the first Second Chance song's three weeks are up.
@@ -227,12 +327,6 @@ struct HomeView: View {
             .filter { $0 > 0 }
         guard let soonest = remaining.min() else { return nil }
         return Int((soonest / 86_400).rounded(.up))
-    }
-
-    private func chanceText(due: Int, total: Int) -> String {
-        if total == 0 { return "Songs you send to Second Chance wait here. After 3 weeks you can see which ones you played." }
-        if due > 0 { return "\(due) songs have waited 3 weeks in the Second Chance playlist. See which ones you played." }
-        return "\(total) songs are waiting in the Second Chance playlist. A round opens after 3 weeks, but you can go through them any time."
     }
 
     private var header: some View {
@@ -333,7 +427,7 @@ private struct FeaturePanel<Visual: View, Buttons: View>: View {
     @ViewBuilder var buttons: Buttons
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 26) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 18) {
                 visual
                 VStack(alignment: .leading, spacing: 8) {
@@ -355,5 +449,65 @@ private struct FeaturePanel<Visual: View, Buttons: View>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .panel(padding: 20)
+    }
+}
+
+/// A one-line row for things that need a look but are not the main event. It looks like the big panels, just shorter.
+private struct QuietStrip<Visual: View>: View {
+    let title: String
+    let detail: String
+    let button: String
+    @ViewBuilder var visual: Visual
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            visual
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                Text(detail).font(.system(size: 13)).foregroundStyle(Theme.muted).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Button(button, action: action).buttonStyle(QuietButtonStyle())
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line))
+    }
+}
+
+/// The same grey as the secondary buttons in the big panels, just smaller.
+private struct QuietButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .foregroundStyle(Theme.ink)
+            .background(Theme.surface2, in: Capsule())
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.smooth(duration: 0.15), value: configuration.isPressed)
+            .contentShape(Capsule())
+            .pointerCursor()
+    }
+}
+
+/// A quiet dashed card that fills the empty half of the second row.
+private struct GapTip: View {
+    let text: String
+    var tall = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lightbulb").font(.system(size: 18)).foregroundStyle(Theme.chance)
+            Text(text).font(.system(size: 13)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: tall ? .infinity : nil, alignment: .leading)
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
     }
 }

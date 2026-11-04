@@ -6,6 +6,8 @@ struct Song: Identifiable, Codable, Hashable {
     let artist: String
     let album: String
     let duration: Double
+    /// Size of the file as Music reports it. Zero when Music does not know.
+    let bytes: Int
     let playCount: Int
     let skipCount: Int
     let lastPlayed: Date?
@@ -14,6 +16,11 @@ struct Song: Identifiable, Codable, Hashable {
 
 /// Talks to the Music app. Reading play counts and deleting songs only works through
 /// Music's scripting interface, which is why Sift is a Mac app.
+extension Song {
+    /// Disk space this song takes. Falls back to about 256 kbit/s of audio when Music reports no size.
+    var diskBytes: Int { bytes > 0 ? bytes : Int(duration * 32_000) }
+}
+
 struct MusicLibrary {
     static let secondChancePlaylist = "Second Chance"
 
@@ -36,12 +43,6 @@ struct MusicLibrary {
     func play(id: String, from seconds: Double) async throws {
         let result = try await Osa.run(Scripts.play, language: .appleScript, args: [id, String(Int(seconds))])
         if result == "unplayable" { throw OsaError(message: "Music couldn't play this song. It may not be downloaded or available right now.") }
-    }
-
-    /// Starts downloading cloud songs so they are ready by the time they come up.
-    func download(ids: [String]) async {
-        guard !ids.isEmpty else { return }
-        _ = try? await Osa.run(Scripts.download, language: .appleScript, args: ids)
     }
 
     func pause() async throws {

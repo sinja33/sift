@@ -243,13 +243,15 @@ struct ArtworkView: View {
     let song: Song
     var loads = true
     var cornerRadius: CGFloat = 12
+    /// Keeps the cover square. Turn off to fill whatever frame it is given.
+    var square = true
 
     @Environment(AppModel.self) private var model
     @State private var image: NSImage?
 
     var body: some View {
         Color.clear
-            .aspectRatio(1, contentMode: .fit)
+            .aspectRatio(square ? 1 : nil, contentMode: .fit)
             .overlay {
                 if let image {
                     Image(nsImage: image).resizable().scaledToFill()
@@ -320,7 +322,7 @@ struct LoadingRing: View {
     }
 }
 
-/// The artist's photo in a circle, with their initial on a colored tile until it loads or when none is found.
+/// The artist's photo in a circle. Until it loads, or when none is found, it shows the person icon.
 struct ArtistAvatar: View {
     let artist: String
     var size: CGFloat = 72
@@ -333,8 +335,7 @@ struct ArtistAvatar: View {
             if let image {
                 Image(nsImage: image).resizable().scaledToFill()
             } else {
-                gradient
-                Text(String(artist.prefix(1)).uppercased()).font(Theme.display(size * 0.42)).foregroundStyle(.white)
+                ArtistIcon(size: size)
             }
         }
         .frame(width: size, height: size)
@@ -344,15 +345,6 @@ struct ArtistAvatar: View {
             image = nil
             image = await model.artistImage(for: artist)
         }
-    }
-
-    private var gradient: LinearGradient {
-        let seed = artist.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFFFF }
-        let hue = Double(seed % 360) / 360
-        return LinearGradient(colors: [
-            Color(hue: hue, saturation: 0.6, brightness: 0.95),
-            Color(hue: (hue + 0.18).truncatingRemainder(dividingBy: 1), saturation: 0.8, brightness: 0.45)
-        ], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 
@@ -505,5 +497,67 @@ struct DeleteIcon: View {
         .frame(width: size, height: size)
         .overlay(Circle().stroke(Theme.line))
         .accessibilityLabel("Ready to delete")
+    }
+}
+
+/// Up to four covers in a circle, the same size as an artist's photo. Shows `fallback` until a cover is found,
+/// and keeps showing it when none of the songs has one.
+struct CoverMosaic<Fallback: View>: View {
+    let songs: [Song]
+    var size: CGFloat = 72
+    @ViewBuilder var fallback: Fallback
+
+    @Environment(AppModel.self) private var model
+    @State private var covers: [NSImage] = []
+
+    var body: some View {
+        Group {
+            if covers.isEmpty {
+                fallback
+            } else {
+                mosaic
+            }
+        }
+        .animation(.smooth(duration: 0.3), value: covers.count)
+        .task(id: songs.prefix(8).map(\.id)) {
+            covers = []
+            // Looks past songs without a cover, so four are found when the songs have them.
+            for song in songs.prefix(8) {
+                if Task.isCancelled || covers.count == 4 { return }
+                var image = model.cachedArtwork(for: song)
+                if image == nil { image = await model.artwork(for: song) }
+                if let image { covers.append(image) }
+            }
+        }
+    }
+
+    private var mosaic: some View {
+        let half = size / 2
+        return Group {
+            switch covers.count {
+            case 1:
+                tile(covers[0], size, size)
+            case 2:
+                HStack(spacing: 1) { tile(covers[0], half, size); tile(covers[1], half, size) }
+            case 3:
+                HStack(spacing: 1) {
+                    tile(covers[0], half, size)
+                    VStack(spacing: 1) { tile(covers[1], half, half); tile(covers[2], half, half) }
+                }
+            default:
+                VStack(spacing: 1) {
+                    HStack(spacing: 1) { tile(covers[0], half, half); tile(covers[1], half, half) }
+                    HStack(spacing: 1) { tile(covers[2], half, half); tile(covers[3], half, half) }
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .background(Theme.surface)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Theme.line))
+    }
+
+    private func tile(_ image: NSImage, _ width: CGFloat, _ height: CGFloat) -> some View {
+        Image(nsImage: image).resizable().scaledToFill().frame(width: width, height: height).clipped()
     }
 }

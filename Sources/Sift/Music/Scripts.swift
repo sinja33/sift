@@ -12,6 +12,7 @@ enum Scripts {
       const artists = tracks.artist();
       const albums = tracks.album();
       const durations = tracks.duration();
+      const sizes = tracks.size();
       const plays = tracks.playedCount();
       const skips = tracks.skippedCount();
       const played = tracks.playedDate();
@@ -28,6 +29,7 @@ enum Scripts {
           artist: artists[i] || '',
           album: albums[i] || '',
           duration: durations[i] || 0,
+          bytes: sizes[i] || 0,
           playCount: plays[i] || 0,
           skipCount: skips[i] || 0,
           lastPlayed: played[i] ? played[i].toISOString() : null,
@@ -48,21 +50,32 @@ enum Scripts {
       set pid to item 1 of argv
       set startAt to (item 2 of argv) as integer
       tell application "Music"
+        -- Stop whatever is playing first. If this song cannot start, the previous one must not carry on.
+        try
+          if player state is playing then pause
+        end try
         set found to (every track of library playlist 1 whose persistent ID is pid)
         if (count of found) is 0 then return "missing"
         set t to item 1 of found
-        play t
+        try
+          if (cloud status of t) is no longer available then return "unplayable"
+        end try
+        try
+          play t
+        on error
+          return "unplayable"
+        end try
         -- Songs that are not downloaded yet take a while to start, so wait for this one in
         -- particular: the player may still be on the previous song until then.
         set started to false
-        repeat 120 times
+        repeat 150 times
           try
-            if player state is playing and (name of current track) is (name of t) then
+            if player state is playing and (persistent ID of current track) is pid then
               set started to true
               exit repeat
             end if
           end try
-          delay 0.25
+          delay 0.1
         end repeat
         if not started then return "unplayable"
         if startAt > 0 then
@@ -70,37 +83,22 @@ enum Scripts {
           set maxAt to (duration of t) - 2
           if startAt > maxAt then set startAt to maxAt as integer
           if startAt < 0 then set startAt to 0
-          repeat 8 times
+          repeat 20 times
             try
               set player position to startAt
               exit repeat
             on error
-              delay 0.25
+              delay 0.1
             end try
           end repeat
         end if
         -- Streaming songs report "playing" while they buffer. Wait until the position moves, so the
         -- caller's timer starts when sound does.
-        repeat 40 times
+        repeat 100 times
           try
-            if player state is playing and (player position) > startAt + 0.4 then exit repeat
+            if player state is playing and (player position) > startAt + 0.3 then exit repeat
           end try
-          delay 0.25
-        end repeat
-      end tell
-      return "ok"
-    end run
-    """#
-
-    /// argv: ids. Asks Music to download cloud songs ahead of time. Returns right away; the downloads run on their own.
-    static let download = #"""
-    on run argv
-      tell application "Music"
-        repeat with pid in argv
-          try
-            set found to (every track of library playlist 1 whose persistent ID is (pid as text))
-            if (count of found) > 0 then download (item 1 of found)
-          end try
+          delay 0.1
         end repeat
       end tell
       return "ok"
