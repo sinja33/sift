@@ -57,7 +57,8 @@ enum Previews {
         audioRequest.timeoutInterval = 8
         guard let (bytes, _) = try? await URLSession.shared.data(for: audioRequest), !bytes.isEmpty else { return nil }
         try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? bytes.write(to: file)
+        // Written in one piece, so a play that starts meanwhile never sees half a file.
+        try? bytes.write(to: file, options: .atomic)
         return file
     }
 
