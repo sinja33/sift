@@ -86,6 +86,7 @@ final class AppModel {
     /// Set when you have deleted a few songs by one artist and Sift offers to go through the rest.
     var artistStop: ArtistStop?
     @ObservationIgnored private var offeredArtists: Set<String> = []
+    @ObservationIgnored private var warmedArtists: Set<String> = []
 
     struct ArtistStop: Equatable {
         let artist: String
@@ -178,13 +179,12 @@ final class AppModel {
         if value { Task { await checkForUpdate() } }
     }
 
-    // MARK: Sound and haptics
+    // MARK: Sound
 
     func setSounds(_ value: Bool) { state.soundsEnabled = value; save() }
-    func setHaptics(_ value: Bool) { state.hapticsEnabled = value; save() }
 
     func feedback(_ cue: Feedback.Cue) {
-        Feedback.play(cue, sounds: state.soundsEnabled, haptics: state.hapticsEnabled)
+        Feedback.play(cue, sounds: state.soundsEnabled)
     }
 
     func connect() async {
@@ -265,6 +265,7 @@ final class AppModel {
         history = []
         artistStop = nil
         offeredArtists = []
+        warmedArtists = []
         screen = .session
         playClipForCurrent()
         if queue.isEmpty { showToast("No songs match this filter right now") }
@@ -365,6 +366,7 @@ final class AppModel {
         index += 1
         save()
         feedback(.decision(decision))
+        if decision == .delete { warmArtist(after: song) }
         if decision == .delete, let stop = artistStopOffer(after: song) {
             artistStop = stop
             stopClip()
@@ -372,6 +374,21 @@ final class AppModel {
         }
         if current == nil { feedback(.done) }
         playClipForCurrent()
+    }
+
+    /// After the second deletion by one artist, starts loading their first songs, so that if the third deletion
+    /// brings up the artist stop, going through them starts without a wait.
+    private func warmArtist(after song: Song) {
+        guard sessionArtist == nil, sessionKind == .sift else { return }
+        let key = Scoring.artistKey(song.artist)
+        guard !key.isEmpty, !warmedArtists.contains(key) else { return }
+        let deleted = history.filter { $0.decision == .delete && Scoring.artistKey($0.song.artist) == key }.count
+        guard deleted >= 2 else { return }
+        warmedArtists.insert(key)
+        let first = Array(songs(by: song.artist).prefix(Self.lookahead + 1))
+        let ids = first.map(\.id).filter { downloadRequested.insert($0).inserted }
+        if !ids.isEmpty { Task { await music.download(ids: ids) } }
+        Task { for song in first { _ = await artwork(for: song) } }
     }
 
     /// After the third deletion by one artist, offers to go through the rest of their songs.

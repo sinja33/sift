@@ -289,11 +289,6 @@ struct SettingsView: View {
                     .toggleStyle(.switch).labelsHidden().pointerCursor()
             }
             Divider()
-            row("Haptics", "A tap on the trackpad as you swipe") {
-                Toggle("", isOn: Binding(get: { model.state.hapticsEnabled }, set: { model.setHaptics($0) }))
-                    .toggleStyle(.switch).labelsHidden().pointerCursor()
-            }
-            Divider()
             row("Clip length", "How long each clip plays") {
                 PillPicker(options: [10, 15, 30], selection: Binding(
                     get: { Int(model.clipLength) }, set: { model.setClipSeconds(Double($0)) })) { "\($0)s" }

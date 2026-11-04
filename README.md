@@ -83,7 +83,7 @@ Sift never uploads your library. It goes online in three small ways, and only to
 
 If you are offline, Sift still works. Covers and photos just show a placeholder.
 
-Sounds and trackpad taps on each swipe can be turned off in Settings.
+Soft sounds on each swipe can be turned off in Settings.
 
 ## How it works
 

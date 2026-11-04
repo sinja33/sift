@@ -25,7 +25,6 @@ struct SavedState: Codable {
     /// "system", "light" or "dark".
     var appearance = "system"
     var soundsEnabled = true
-    var hapticsEnabled = true
     /// Asks GitHub once per launch whether a newer version is out.
     var checkUpdates = true
     /// The version whose banner you dismissed.
@@ -46,7 +45,6 @@ struct SavedState: Codable {
         sessionSize = try c.decodeIfPresent(Int.self, forKey: .sessionSize) ?? 20
         appearance = try c.decodeIfPresent(String.self, forKey: .appearance) ?? "system"
         soundsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundsEnabled) ?? true
-        hapticsEnabled = try c.decodeIfPresent(Bool.self, forKey: .hapticsEnabled) ?? true
         checkUpdates = try c.decodeIfPresent(Bool.self, forKey: .checkUpdates) ?? true
         dismissedUpdate = try c.decodeIfPresent(String.self, forKey: .dismissedUpdate)
     }

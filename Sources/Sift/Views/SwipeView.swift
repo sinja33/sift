@@ -4,8 +4,6 @@ struct SwipeView: View {
     @Environment(AppModel.self) private var model
     @State private var drag: CGSize = .zero
     @State private var leaving = false
-    /// True once the dragged card is far enough that letting go decides it.
-    @State private var pastThreshold = false
     @FocusState private var focused: Bool
 
     private let threshold: CGFloat = 110
@@ -191,6 +189,7 @@ struct SwipeView: View {
                 tallyRow(.secondChance)
                 tallyRow(.keep)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .panel()
 
             Toggle("Play clips", isOn: Binding(get: { model.clipsEnabled }, set: { model.setClipsEnabled($0) }))
@@ -229,6 +228,7 @@ struct SwipeView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .panel()
 
             VStack(alignment: .leading, spacing: 4) {
@@ -236,6 +236,7 @@ struct SwipeView: View {
                 Text("\(model.state.pendingDelete.count) songs").font(Theme.display(24))
                 Text("They stay in your library until you confirm.").font(.caption).foregroundStyle(Theme.muted)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .panel()
         }
     }
@@ -257,16 +258,8 @@ struct SwipeView: View {
 
     private var dragGesture: some Gesture {
         DragGesture()
-            .onChanged { value in
-                drag = value.translation
-                let past = abs(value.translation.width) > threshold || value.translation.height < -threshold
-                if past != pastThreshold {
-                    pastThreshold = past
-                    if past { model.feedback(.threshold) }
-                }
-            }
+            .onChanged { drag = $0.translation }
             .onEnded { value in
-                pastThreshold = false
                 let t = value.translation
                 if t.width > threshold {
                     commit(model.rightDecision)
