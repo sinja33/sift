@@ -8,7 +8,7 @@ A Mac app for cleaning up your Apple Music library. Sift finds the songs you nev
 
 Second Chance songs go into a "Second Chance" playlist that syncs to your iPhone. Three weeks later, Sift shows you a round with how often you played each one since, and suggests whether to keep or delete it.
 
-Nothing is deleted until you confirm on the review screen. Sift also saves a backup list (CSV) of deleted songs to `Documents/Sift Backups`.
+Nothing is deleted until you confirm on the review screen. On the review screen you can tick a box to save a backup list (CSV) of the deleted songs to `Documents/Sift Backups`.
 
 ## Download
 
@@ -32,7 +32,7 @@ bash scripts/build-app.sh
 open build/Sift.app
 ```
 
-To work on the code in Xcode instead, open `Package.swift` in Xcode and press Run.
+To work on the code in Xcode instead, open `Package.swift` in Xcode and press Run. Run the tests with `bash scripts/test.sh`.
 
 ## Publishing a release
 

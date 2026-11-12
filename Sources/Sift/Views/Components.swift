@@ -57,8 +57,11 @@ struct StatView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value).font(Theme.mono(size)).monospacedDigit()
-            Text(label.uppercased()).font(.system(size: 10, weight: .medium)).tracking(0.6).foregroundStyle(Theme.muted)
+            Text(label.uppercased()).font(.system(size: 11, weight: .medium)).tracking(0.6).foregroundStyle(Theme.muted)
         }
+        // Numbers and labels never wrap mid-word; the layout around them makes room instead.
+        .lineLimit(1)
+        .fixedSize()
     }
 }
 
@@ -139,7 +142,7 @@ struct HealthRing: View {
                         CountText(value: shown * 100).font(Theme.display(40))
                         Text("%").font(Theme.display(20)).foregroundStyle(Theme.muted)
                     }
-                    Text("PLAYED").font(.system(size: 10, weight: .semibold)).tracking(1).foregroundStyle(Theme.muted)
+                    Text("PLAYED").font(.system(size: 11, weight: .semibold)).tracking(1).foregroundStyle(Theme.muted)
                 }
             }
         }
@@ -253,7 +256,8 @@ struct ArtworkView: View {
         Color.clear
             .aspectRatio(square ? 1 : nil, contentMode: .fit)
             .overlay {
-                if let image {
+                // Reading the cache here means a cover fetched after this view appeared still shows up.
+                if let image = image ?? model.cachedArtwork(for: song) {
                     Image(nsImage: image).resizable().scaledToFill()
                 } else {
                     LinearGradient(colors: placeholderColors, startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -293,7 +297,7 @@ struct SongRow<Trailing: View>: View {
             ArtworkView(song: song, loads: false, cornerRadius: 6).frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text(song.title).fontWeight(.semibold).lineLimit(1)
-                Text(detail).font(.caption).foregroundStyle(Theme.muted).lineLimit(1)
+                Text(detail).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
             }
             Spacer(minLength: 8)
             trailing()

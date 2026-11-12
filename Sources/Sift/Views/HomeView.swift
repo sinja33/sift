@@ -5,6 +5,10 @@ struct HomeView: View {
     @State private var showingSettings = false
     /// The first songs the next session would show, for the cover mosaic on the session panel.
     @State private var previewSongs: [Song] = []
+    /// Panels side by side stack their buttons together: when one row of buttons does not fit, both stack.
+    @State private var stackTopButtons = false
+    @State private var stackBigRowButtons = false
+    @State private var stackStripButtons = false
 
     /// False until the first read of the library is done.
     private var loaded: Bool { !(model.isLoading && model.songs.isEmpty) }
@@ -21,25 +25,11 @@ struct HomeView: View {
                 if let update = model.availableUpdate { updateBanner(update).transition(.opacity.combined(with: .move(edge: .top))) }
 
                 if !(loaded && model.songs.isEmpty) {
-                HStack(spacing: 36) {
-                    HealthRing(value: model.healthScore, loading: model.isLoading && model.songs.isEmpty)
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("of your library played in the last 12 months")
-                            .foregroundStyle(Theme.muted)
-                        HStack(spacing: 36) {
-                            StatView(value: model.songs.count.formatted(), label: "songs", size: 24)
-                            StatView(value: model.neverPlayedCount.formatted(), label: "never played", size: 24)
-                            StatView(value: model.state.removedCount.formatted(), label: "removed so far", size: 24)
-                        }
-                        .redacted(reason: loaded ? [] : .placeholder)
-                        .shimmer(!loaded)
-                        .animation(.smooth(duration: 0.4), value: loaded)
+                    // Wide: the space saved sits at the far right. Narrow: it moves under the stats, so they keep one line each.
+                    ViewThatFits(in: .horizontal) {
+                        overview(compact: false)
+                        overview(compact: true)
                     }
-                    if loaded {
-                        Spacer(minLength: 16)
-                        spaceSaved.transition(.opacity)
-                    }
-                }
                 }
 
                 if loaded && model.songs.isEmpty {
@@ -51,6 +41,8 @@ struct HomeView: View {
                         spotlightPanel
                     }
                     .fixedSize(horizontal: false, vertical: true)
+                    .environment(\.stackPanelButtons, stackTopButtons)
+                    .onPreferenceChange(PanelButtonsOverflow.self) { stackTopButtons = $0 }
                     .reveal(delay: 0.05)
 
                     // The page spaces sections 32 apart; the strips sit closer, like the gap between the two panels above.
@@ -71,7 +63,7 @@ struct HomeView: View {
         .task(id: "\(model.songs.count)-\(model.filter.rawValue)-\(model.state.pendingDelete.count)-\(model.state.kept.count)-\(model.state.secondChance.count)") {
             previewSongs = Scoring.queue(from: model.songs, state: model.state, filter: model.filter, limit: 8)
             // Get the first songs of the next session ready while Home is open, so starting it has little to wait for.
-            model.warm(Array(previewSongs.prefix(3)))
+            model.warm(Array(previewSongs.prefix(5)))
             model.warm(Array(model.spotlightSongs.prefix(3)))
         }
         }
@@ -83,7 +75,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Sift \(release.version) is out").font(.headline)
                 Text(UpdateCheck.installed.map { "You have \($0). The new version is a free download." } ?? "The new version is a free download.")
-                    .font(.callout).foregroundStyle(Theme.muted)
+                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
             }
             Spacer()
             Button("Later") { model.dismissUpdate() }.buttonStyle(.secondary)
@@ -113,6 +105,31 @@ struct HomeView: View {
         }
     }
 
+    /// The ring with the library stats beside it.
+    private func overview(compact: Bool) -> some View {
+        HStack(spacing: compact ? 28 : 36) {
+            HealthRing(value: model.healthScore, loading: model.isLoading && model.songs.isEmpty)
+            VStack(alignment: .leading, spacing: 14) {
+                Text("of your library played in the last 12 months")
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: compact ? 24 : 36) {
+                    StatView(value: model.songs.count.formatted(), label: "songs", size: 24)
+                    StatView(value: model.neverPlayedCount.formatted(), label: "never played", size: 24)
+                    StatView(value: model.state.removedCount.formatted(), label: "removed so far", size: 24)
+                }
+                .redacted(reason: loaded ? [] : .placeholder)
+                .shimmer(!loaded)
+                .animation(.smooth(duration: 0.4), value: loaded)
+                if compact && loaded { spaceSaved.transition(.opacity) }
+            }
+            if !compact && loaded {
+                Spacer(minLength: 16)
+                spaceSaved.fixedSize().transition(.opacity)
+            }
+        }
+    }
+
     /// What cleaning up is for: the disk space freed by the songs you have deleted with Sift.
     private var spaceSaved: some View {
         let bytes = model.state.removedBytes
@@ -122,7 +139,7 @@ struct HomeView: View {
             Text(size).font(Theme.mono(15)).fontWeight(.bold).contentTransition(.numericText())
             Text("saved").foregroundStyle(Theme.muted)
         }
-        .font(.callout)
+        .font(.system(size: 13))
         .help("Disk space freed by songs you deleted with Sift")
     }
 
@@ -258,6 +275,8 @@ struct HomeView: View {
         }
         .animation(.smooth(duration: 0.4), value: pending.isEmpty)
         .animation(.smooth(duration: 0.4), value: total)
+        .environment(\.stackPanelButtons, stackStripButtons)
+        .onPreferenceChange(PanelButtonsOverflow.self) { stackStripButtons = $0 }
     }
 
     /// Shown in the empty half when only one of the two sections has something in it.
@@ -297,20 +316,22 @@ struct HomeView: View {
                     visual: { CoverMosaic(songs: model.secondChanceRound(all: true).map(\.song)) { SecondChanceIcon() } },
                     buttons: {
                         if resumed != nil {
-                            Button("Continue") { model.resume(.chance) }.buttonStyle(.secondary)
+                            Button("Continue") { model.resume(.chance) }.buttonStyle(.primary)
                             Button("Start over") { model.discardPaused(.chance) }.buttonStyle(.secondary)
                         } else if due > 0 {
-                            Button("Review round") { Task { await model.openSecondChance() } }.buttonStyle(.secondary)
+                            Button("Review round") { Task { await model.openSecondChance() } }.buttonStyle(.primary)
                         }
                         if resumed == nil && due < total {
                             Button(due > 0 ? "Go through all \(total)" : "Go through them now") { Task { await model.openSecondChance(all: true) } }
-                                .buttonStyle(.secondary)
+                                .buttonStyle(CapsuleButtonStyle.panel(primary: due == 0))
                         }
                     })
             }
             if pending.isEmpty != !chanceShown { GapTip(text: pending.isEmpty ? Self.deleteTip : Self.chanceTip, tall: true) }
         }
         .fixedSize(horizontal: false, vertical: true)
+        .environment(\.stackPanelButtons, stackBigRowButtons)
+        .onPreferenceChange(PanelButtonsOverflow.self) { stackBigRowButtons = $0 }
     }
 
     private func chanceDetail(due: Int, total: Int) -> String {
@@ -408,7 +429,7 @@ struct SettingsView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).fontWeight(.semibold)
-                Text(detail).font(.caption).foregroundStyle(Theme.muted)
+                Text(detail).font(.system(size: 12)).foregroundStyle(Theme.muted)
             }
             Spacer(minLength: 8)
             control()
@@ -425,30 +446,66 @@ private struct FeaturePanel<Visual: View, Buttons: View>: View {
     let description: String
     @ViewBuilder var visual: Visual
     @ViewBuilder var buttons: Buttons
+    @Environment(\.stackPanelButtons) private var stacked
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 18) {
                 visual
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(label).font(Theme.mono(11)).tracking(1).foregroundStyle(Theme.muted)
+                    Text(label).font(Theme.mono(12)).tracking(1).foregroundStyle(Theme.muted)
                     Text(title).font(Theme.display(24)).lineLimit(1)
-                    Text(detail).font(.callout).foregroundStyle(Theme.muted)
+                    Text(detail).font(.system(size: 13)).foregroundStyle(Theme.muted)
                 }
                 Spacer(minLength: 0)
             }
             Text(description)
-                .font(.callout).foregroundStyle(Theme.muted)
+                .font(.system(size: 13)).foregroundStyle(Theme.muted)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) { buttons }
-                VStack(alignment: .leading, spacing: 10) { buttons }
+            Group {
+                if stacked {
+                    VStack(alignment: .leading, spacing: 10) { buttons }
+                } else {
+                    HStack(spacing: 10) { buttons }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Measures whether the buttons fit on one line here. The row decides for every panel in it.
+            .background {
+                GeometryReader { room in
+                    HStack(spacing: 10) { buttons }
+                        .fixedSize()
+                        .hidden()
+                        .background(GeometryReader { row in
+                            Color.clear.preference(key: PanelButtonsOverflow.self, value: row.size.width > room.size.width + 0.5)
+                        })
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .panel(padding: 20)
+    }
+}
+
+/// True when any panel in a row has more buttons than fit on one line.
+private struct PanelButtonsOverflow: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}
+
+private struct StackPanelButtonsKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Set by a row of panels so they all stack their buttons, or none do.
+    fileprivate var stackPanelButtons: Bool {
+        get { self[StackPanelButtonsKey.self] }
+        set { self[StackPanelButtonsKey.self] = newValue }
     }
 }
 
@@ -460,21 +517,56 @@ private struct QuietStrip<Visual: View>: View {
     @ViewBuilder var visual: Visual
     let action: () -> Void
 
+    @Environment(\.stackPanelButtons) private var stacked
+    /// Below this the title would be cut too short, so the button moves under it.
+    private static var minTextWidth: CGFloat { 150 }
+
     var body: some View {
         HStack(spacing: 14) {
             visual
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                Text(detail).font(.system(size: 13)).foregroundStyle(Theme.muted).lineLimit(1)
+            if stacked {
+                VStack(alignment: .leading, spacing: 8) {
+                    texts
+                    actionButton
+                }
+                Spacer(minLength: 0)
+            } else {
+                texts
+                Spacer(minLength: 8)
+                actionButton
             }
-            Spacer(minLength: 8)
-            Button(button, action: action).buttonStyle(QuietButtonStyle())
+        }
+        .background {
+            // Measures whether the text and button fit side by side. The row decides for both strips.
+            GeometryReader { room in
+                // 40 is the strips' cover size; a stand-in avoids loading the covers twice.
+                HStack(spacing: 14) { Color.clear.frame(width: 40, height: 1); Color.clear.frame(width: Self.minTextWidth, height: 1); actionButton }
+                    .padding(.trailing, 8)
+                    .fixedSize()
+                    .hidden()
+                    .background(GeometryReader { row in
+                        Color.clear.preference(key: PanelButtonsOverflow.self, value: row.size.width > room.size.width + 0.5)
+                    })
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line))
+    }
+
+    private var texts: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+            Text(detail).font(.system(size: 13)).foregroundStyle(Theme.muted).lineLimit(1)
+        }
+    }
+
+    private var actionButton: some View {
+        Button(button, action: action).buttonStyle(QuietButtonStyle()).lineLimit(1).fixedSize()
     }
 }
 

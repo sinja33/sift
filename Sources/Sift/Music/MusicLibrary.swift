@@ -25,7 +25,11 @@ struct MusicLibrary {
     static let secondChancePlaylist = "Second Chance"
 
     func loadSongs() async throws -> [Song] {
-        let json = try await Osa.run(Scripts.loadSongs)
+        try Self.decodeSongs(try await Osa.run(Scripts.loadSongs))
+    }
+
+    /// Reads the JSON that `Scripts.loadSongs` prints.
+    static func decodeSongs(_ json: String) throws -> [Song] {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()

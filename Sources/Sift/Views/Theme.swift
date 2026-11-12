@@ -18,7 +18,6 @@ enum Theme {
     static let ink = Color.dynamic(light: 0x15172A, dark: 0xECEEFA)
     static let muted = Color.dynamic(light: 0x5B6080, dark: 0x9CA1C4)
     static let line = Color.dynamic(light: 0xDCDFEB, dark: 0x2C3050)
-    static let onAction = Color.dynamic(light: 0xFFFFFF, dark: 0x0D0E19)
 
     static func display(_ size: CGFloat) -> Font { .system(size: size, weight: .heavy) }
     static func mono(_ size: CGFloat) -> Font { .system(size: size, weight: .medium, design: .monospaced) }
@@ -95,6 +94,11 @@ extension ButtonStyle where Self == CapsuleButtonStyle {
     static var primary: CapsuleButtonStyle { CapsuleButtonStyle(fill: Theme.action, text: .white) }
     static var secondary: CapsuleButtonStyle { CapsuleButtonStyle(fill: Theme.surface2, text: Theme.ink) }
     static var danger: CapsuleButtonStyle { CapsuleButtonStyle(fill: Theme.delete, text: .white) }
+}
+
+extension CapsuleButtonStyle {
+    /// Primary when it is the main action of its panel, secondary otherwise.
+    static func panel(primary: Bool) -> CapsuleButtonStyle { primary ? .primary : .secondary }
 }
 
 extension View {

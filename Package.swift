@@ -5,6 +5,7 @@ let package = Package(
     name: "Sift",
     platforms: [.macOS(.v14)],
     targets: [
-        .executableTarget(name: "Sift", path: "Sources/Sift")
+        .executableTarget(name: "Sift", path: "Sources/Sift"),
+        .testTarget(name: "SiftTests", dependencies: ["Sift"], path: "Tests/SiftTests")
     ]
 )

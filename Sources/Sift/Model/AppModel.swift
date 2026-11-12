@@ -130,7 +130,8 @@ final class AppModel {
     private let music = MusicLibrary()
     private let store = StateStore()
     @ObservationIgnored private var clipTask: Task<Void, Never>?
-    @ObservationIgnored private var artworkCache: [String: NSImage] = [:]
+    /// Observed, so a cover that arrives later shows up in views that are already on screen, like Up next.
+    private var artworkCache: [String: NSImage] = [:]
     @ObservationIgnored private var artworkMisses: Set<String> = []
     @ObservationIgnored private var artworkPrefetch: Task<Void, Never>?
     @ObservationIgnored private let clipPlayer = ClipPlayer()
@@ -383,6 +384,14 @@ final class AppModel {
 
     func discardPaused(_ key: PauseKey) { paused[key] = nil }
 
+    /// Opens the review screen from the middle of a session. The session is kept, so Home can pick it up again.
+    func openReview() {
+        stopClip()
+        pauseIfUnfinished()
+        artistStop = nil
+        screen = .review
+    }
+
     // MARK: Artist spotlight
 
     /// Songs by an artist that are still up for a decision, most likely clutter first.
@@ -581,7 +590,11 @@ final class AppModel {
         clipStartedAt = nil
         clipUnplayable = false
         clipLoading = clipsEnabled
-        guard clipsEnabled else { return }
+        guard clipsEnabled else {
+            // Without clips nothing else starts the cover fetch for the songs coming up.
+            prefetchArtwork()
+            return
+        }
         prefetchPreviews()
         clipTask = Task {
             // Apple's preview first: it is a small file that is usually fetched already, so it starts at once.
@@ -661,6 +674,7 @@ final class AppModel {
     /// Fetches the previews of songs that will probably come up soon, such as the first songs of the next session.
     /// They are small files in the caches folder. Nothing is downloaded into the Music library.
     func warm(_ songs: [Song]) {
+        Task { for song in songs { _ = await artwork(for: song) } }
         guard clipsEnabled else { return }
         Task { for song in songs { _ = await Previews.file(for: song) } }
     }

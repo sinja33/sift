@@ -83,13 +83,20 @@ struct StateStore {
 /// Writes a CSV of deleted songs to ~/Documents/Sift Backups before anything is deleted.
 enum Backup {
     @discardableResult
-    static func write(_ songs: [Song]) throws -> URL {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    static func write(_ songs: [Song], in folder: URL? = nil) throws -> URL {
+        let dir = folder ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Sift Backups", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let stamp = DateFormatter()
         stamp.dateFormat = "yyyy-MM-dd HH.mm"
-        let url = dir.appendingPathComponent("Deleted \(stamp.string(from: Date())).csv")
+        let base = "Deleted \(stamp.string(from: Date()))"
+        // Two deletes in the same minute must not overwrite the first backup.
+        var url = dir.appendingPathComponent("\(base).csv")
+        var n = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = dir.appendingPathComponent("\(base) (\(n)).csv")
+            n += 1
+        }
         let iso = ISO8601DateFormatter()
         var lines = ["Title,Artist,Album,Plays,Skips,Date added,Last played"]
         for song in songs {

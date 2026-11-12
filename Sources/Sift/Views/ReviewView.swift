@@ -13,7 +13,7 @@ struct ReviewView: View {
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("READY TO DELETE").font(Theme.mono(12)).tracking(1).foregroundStyle(Theme.muted)
-                    Text(selected.count == 1 ? "1 song" : "\(selected.count) songs").font(Theme.display(34))
+                    Text(selected.count == 1 ? "1 song" : "\(selected.count) songs").font(Theme.display(32))
                 }
                 Spacer()
                 Text(Format.totalTime(songs.filter { selected.contains($0.id) }))
@@ -59,7 +59,7 @@ struct ReviewView: View {
                     .disabled(selected.isEmpty || working)
             }
             Text("Deleting removes the songs from your library on every device through iCloud. Apple Music has no undo for this. Songs you untick count as kept.")
-                .font(.caption)
+                .font(.system(size: 12))
                 .foregroundStyle(Theme.muted)
         }
         .padding(44)

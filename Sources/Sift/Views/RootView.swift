@@ -47,7 +47,7 @@ struct WelcomeView: View {
         VStack(spacing: 20) {
             LogoMark(size: 96)
             Text("Clean up your library,\none song at a time")
-                .font(Theme.display(30))
+                .font(Theme.display(32))
                 .multilineTextAlignment(.center)
             Text("Sift reads your Music library to find the songs you never play.")
                 .foregroundStyle(Theme.muted)
@@ -77,11 +77,11 @@ struct WelcomeView: View {
                             Button("Open Automation settings") {
                                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
                             }
-                            .buttonStyle(.plain).pointerCursor().font(.callout.weight(.semibold)).underline()
+                            .buttonStyle(.plain).pointerCursor().font(.system(size: 13, weight: .semibold)).underline()
                         }
                     }
                 }
-                .font(.callout)
+                .font(.system(size: 13))
                 .foregroundStyle(Theme.delete)
                 .padding(12)
                 .frame(width: 340, alignment: .leading)
@@ -89,7 +89,7 @@ struct WelcomeView: View {
                 .transition(.opacity)
             } else {
                 Text("macOS will ask once whether Sift may control Music. Click OK.")
-                    .font(.caption)
+                    .font(.system(size: 12))
                     .foregroundStyle(Theme.muted)
             }
         }

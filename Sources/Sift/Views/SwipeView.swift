@@ -26,7 +26,7 @@ struct SwipeView: View {
                 header(compact: !wide)
                 progressBar
                 HStack(alignment: .top, spacing: 28) {
-                    if large { sidebar.frame(width: columnWidth) }
+                    if large { sidebar(showsReady: false).frame(width: columnWidth) }
                     VStack(spacing: 22) {
                         if let stop = model.artistStop {
                             artistStopCard(stop)
@@ -44,7 +44,7 @@ struct SwipeView: View {
                     }
                     .frame(maxWidth: .infinity)
 
-                    if large { upNext.frame(width: columnWidth) } else if wide { sidebar.frame(width: sidebarWidth) }
+                    if large { upNext.frame(width: columnWidth) } else if wide { sidebar(showsReady: true).frame(width: sidebarWidth) }
                 }
                 .padding(40)
                 Spacer(minLength: 0)
@@ -89,11 +89,20 @@ struct SwipeView: View {
                     Pill("\(model.count(of: .keep))", decision: .keep)
                 }
             }
+            if compact && !model.state.pendingDelete.isEmpty {
+                // Narrow windows have no side panels, so the way to the review sits up here.
+                Button { model.openReview() } label: {
+                    Label("\(model.state.pendingDelete.count)", systemImage: "trash")
+                }
+                .buttonStyle(.secondary)
+                .help("Review and delete the songs marked so far")
+                .padding(.leading, 8)
+            }
             if model.current != nil {
                 Button { model.undo() } label: {
                     Image(systemName: "arrow.uturn.backward")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 36, height: 36)
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(width: 40, height: 40)
                         .background(Theme.surface2, in: Circle())
                         .contentShape(Circle())
                 }
@@ -160,7 +169,7 @@ struct SwipeView: View {
             Mascot(mood: .wink, size: 64)
             ArtistAvatar(artist: stop.artist, size: 88)
             Text("That's \(stop.deleted) songs by \(stop.artist)")
-                .font(Theme.display(22))
+                .font(Theme.display(24))
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
             Text("They have \(stop.remaining) more in your library. Go through them now, then pick up where you left off?")
@@ -172,7 +181,7 @@ struct SwipeView: View {
                 Button("Not now") { model.declineArtistStop() }.buttonStyle(.secondary)
             }
             .padding(.top, 6)
-            Text("Return to go, Esc to skip").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+            Text("Return to go, Esc to skip").font(Theme.mono(12)).foregroundStyle(Theme.muted)
         }
         .padding(24)
         .frame(width: 320)
@@ -181,7 +190,8 @@ struct SwipeView: View {
         .shadow(color: .black.opacity(0.10), radius: 16, y: 8)
     }
 
-    private var sidebar: some View {
+    /// On the largest windows the ready-to-delete panel sits in the right column instead.
+    private func sidebar(showsReady: Bool) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(model.sessionKind == .secondChance ? "This round" : "This session").font(.headline)
@@ -191,6 +201,8 @@ struct SwipeView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .panel()
+
+            if showsReady { readyToDelete }
 
             Toggle("Play clips", isOn: Binding(get: { model.clipsEnabled }, set: { model.setClipsEnabled($0) }))
                 .toggleStyle(.switch)
@@ -204,7 +216,7 @@ struct SwipeView: View {
                 keyHint("⌘Z", "Undo")
                 keyHint("Space", "Replay clip")
             }
-            .font(.callout)
+            .font(.system(size: 13))
             .foregroundStyle(Theme.muted)
         }
     }
@@ -216,14 +228,14 @@ struct SwipeView: View {
                 Text("Up next").font(.headline)
                 let next = model.queue.dropFirst(model.index + 1).prefix(4)
                 if next.isEmpty {
-                    Text("That's the last one.").font(.callout).foregroundStyle(Theme.muted)
+                    Text("That's the last one.").font(.system(size: 13)).foregroundStyle(Theme.muted)
                 }
                 ForEach(Array(next), id: \.id) { song in
                     HStack(spacing: 12) {
                         ArtworkView(song: song, loads: false, cornerRadius: 8).frame(width: 44, height: 44)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(song.title).fontWeight(.semibold).lineLimit(1)
-                            Text(song.artist).font(.caption).foregroundStyle(Theme.muted).lineLimit(1)
+                            Text(song.artist).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
                         }
                     }
                 }
@@ -231,14 +243,26 @@ struct SwipeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .panel()
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("PENDING DELETE").font(Theme.mono(11)).tracking(1).foregroundStyle(Theme.muted)
-                Text("\(model.state.pendingDelete.count) songs").font(Theme.display(24))
-                Text("They stay in your library until you confirm.").font(.caption).foregroundStyle(Theme.muted)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .panel()
+            readyToDelete
         }
+    }
+
+    /// Songs marked for deletion so far, with a way to review them without finishing the session first.
+    private var readyToDelete: some View {
+        let count = model.state.pendingDelete.count
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("READY TO DELETE").font(Theme.mono(12)).tracking(1).foregroundStyle(Theme.muted)
+            Text(count == 1 ? "1 song" : "\(count) songs").font(Theme.display(24)).contentTransition(.numericText())
+            Text("They stay in your library until you confirm.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+            Button("Review and delete") { model.openReview() }
+                .buttonStyle(.secondary)
+                .disabled(count == 0)
+                .opacity(count == 0 ? 0.5 : 1)
+                .padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .panel()
+        .animation(.smooth(duration: 0.3), value: count)
     }
 
     private func tallyRow(_ decision: Decision) -> some View {
@@ -324,7 +348,7 @@ struct SongCard: View {
                 .onTapGesture { if isTop { model.playClipForCurrent() } }
                 .pointerCursor()
             VStack(alignment: .leading, spacing: 2) {
-                Text(song.title).font(Theme.display(20)).lineLimit(2)
+                Text(song.title).font(Theme.display(24)).lineLimit(2)
                 Text([song.artist, song.album].filter { !$0.isEmpty }.joined(separator: " · "))
                     .foregroundStyle(Theme.muted)
                     .lineLimit(1)
@@ -356,7 +380,7 @@ struct SongCard: View {
                     Spacer()
                     StatView(value: Format.age(song.dateAdded), label: "in library")
                     Spacer()
-                    StatView(value: Format.monthYear(song.lastPlayed), label: "last played")
+                    StatView(value: song.lastPlayed == nil && song.playCount > 0 ? "unknown" : Format.monthYear(song.lastPlayed), label: "last played")
                 }
             }
         }
@@ -450,7 +474,7 @@ private struct ClipBar: View {
                     Spacer()
                     Text("\(Format.duration(min(elapsed, model.clipLength))) / \(Format.duration(model.clipLength))")
                 }
-                .font(Theme.mono(11))
+                .font(Theme.mono(12))
                 .foregroundStyle(Theme.muted)
             }
         }
@@ -468,7 +492,7 @@ private struct SessionDoneView: View {
                 .scaleEffect(shown ? 1 : 0.3)
                 .opacity(shown ? 1 : 0)
                 .animation(.spring(duration: 0.7, bounce: 0.5), value: shown)
-            Text(model.queue.isEmpty ? "Nothing to swipe" : chance ? "Round done!" : "Session complete!").font(Theme.display(26))
+            Text(model.queue.isEmpty ? "Nothing to swipe" : chance ? "Round done!" : "Session complete!").font(Theme.display(32))
                 .rise(shown, delay: 0.15)
             Text(model.queue.isEmpty
                  ? "Every song is either new, recently kept or already waiting. Try another filter on the home screen, or come back after you've listened to more."
@@ -485,7 +509,7 @@ private struct SessionDoneView: View {
                     Button("Apply choices") { Task { await model.finishSecondChanceRound() } }.buttonStyle(.primary)
                 } else {
                     if !model.state.pendingDelete.isEmpty {
-                        Button("Review and delete") { model.stopClip(); model.screen = .review }.buttonStyle(.danger)
+                        Button("Review and delete") { model.stopClip(); model.screen = .review }.buttonStyle(.secondary)
                     }
                     Button("Another session") { model.startSession() }.buttonStyle(.primary)
                 }
