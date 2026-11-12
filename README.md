@@ -1,108 +1,155 @@
 # Sift
 
-A Mac app for cleaning up your Apple Music library. Sift finds the songs you never play, plays a short clip of each one, and lets you swipe:
+**Swipe through your Apple Music library and clear out the songs you never play.**
 
-- **Left** to delete it
-- **Right** to keep it
-- **Up** to give it a Second Chance
+You know those thousands of songs you added years ago and never listen to? Sift finds them, plays a short clip of each one so you remember what it is, and lets you decide in a second:
 
-Second Chance songs go into a "Second Chance" playlist that syncs to your iPhone. Three weeks later, Sift shows you a round with how often you played each one since, and suggests whether to keep or delete it.
-
-Nothing is deleted until you confirm on the review screen. On the review screen you can tick a box to save a backup list (CSV) of the deleted songs to `Documents/Sift Backups`.
-
-## Download
-
-1. Go to the [latest release](../../releases/latest) and download **Sift-x.y.z.dmg**.
-2. Open the file and drag **Sift** onto the **Applications** folder.
-3. Open Sift from Applications. The first time, macOS says it can't check the app for malware, because Sift isn't signed with a paid Apple developer certificate. This is normal for free apps like this one. To open it anyway:
-   - **macOS 15 and newer:** click **Done**, then open **System Settings → Privacy & Security**, scroll down to the message about Sift and click **Open Anyway**.
-   - **macOS 14:** right-click (or Control-click) Sift in Applications, choose **Open**, then click **Open**.
-   You only do this once.
-4. Click **Connect to Music**. macOS asks whether Sift may control Music. Click **OK**. If you click Don't Allow by mistake, turn it back on in System Settings → Privacy & Security → Automation → Sift → Music.
-
-You need a Mac with macOS 14 (Sonoma) or newer and the Music app with your library in it. Turn on Sync Library in Music if you want deletes to reach your iPhone.
-
-## Build it yourself
-
-You only need this if you want to change the code. It needs Apple's free developer tools: **Xcode** from the App Store, or just the Command Line Tools (`xcode-select --install` in Terminal).
-
-```bash
-cd path/to/sift
-bash scripts/build-app.sh
-open build/Sift.app
-```
-
-To work on the code in Xcode instead, open `Package.swift` in Xcode and press Run. Run the tests with `bash scripts/test.sh`.
-
-## Publishing a release
-
-Tag a version and push the tag. GitHub builds the app for Apple Silicon and Intel Macs and attaches the `.dmg` and `.zip` to a new release:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-To build the download on your own Mac instead, run `VERSION=1.0.0 bash scripts/make-dmg.sh`. The files land in `dist/`.
-
-## Shortcuts on the swipe screen
-
-| Key | Action |
+| Swipe | What happens |
 | --- | --- |
-| ← | Delete (or Keep if you switched directions) |
+| ⬅️ **Left** | Delete it |
+| ➡️ **Right** | Keep it |
+| ⬆️ **Up** | Not sure? Give it a **Second Chance** |
+
+Second Chance songs go into a playlist called "Second Chance" that shows up on your iPhone too. Three weeks later Sift checks whether you actually played them and helps you decide for good.
+
+**Nothing is deleted until you say so.** Every song you swipe away waits on a review screen, where you can look over the list and untick anything before confirming.
+
+It's free, and it runs on your Mac. Your library never gets uploaded anywhere.
+
+---
+
+## Get Sift on your Mac
+
+**What you need:** a Mac with **macOS 14 (Sonoma) or newer** and your songs in the **Music** app. Not sure which macOS you have? Click the Apple menu  in the top-left corner and choose **About This Mac**.
+
+It takes about two minutes:
+
+### 1. Download it
+
+Go to the **[download page](../../releases/latest)** and click **Sift-1.0.0.dmg** (the number may be higher). It lands in your **Downloads** folder.
+
+### 2. Install it
+
+Double-click the file you downloaded. A small window opens with the Sift icon and an Applications folder. **Drag Sift onto the Applications folder.** That's it. You can close the window.
+
+### 3. Open it the first time
+
+Open your **Applications** folder and double-click **Sift**.
+
+The first time, your Mac shows a warning that it **"could not verify Sift is free of malware"**. Don't worry: you see this with any free app made by someone who doesn't pay Apple's yearly developer fee. To open it anyway:
+
+1. Click **Done** (not "Move to Trash").
+2. Open the Apple menu  → **System Settings** → **Privacy & Security**.
+3. Scroll down until you see **"Sift was blocked to protect your Mac"** and click **Open Anyway**.
+4. Enter your Mac password if it asks, then click **Open Anyway** once more.
+
+You only ever do this once.
+
+> On **macOS 14 (Sonoma)** it's quicker: in Applications, **right-click** Sift, choose **Open**, then click **Open**.
+
+### 4. Connect it to Music
+
+Click **Connect to Music**. Your Mac asks whether Sift may control Music. **Click OK.** Sift reads your library, which takes a few seconds for big ones, and you're ready to swipe.
+
+> **Clicked "Don't Allow" by mistake?** Open System Settings → Privacy & Security → **Automation**, find Sift and switch **Music** on.
+
+**Tip:** if you want deleted songs to disappear from your iPhone as well, make sure **Sync Library** is on in Music (Music → Settings → General).
+
+---
+
+## How a session goes
+
+1. On the Home screen, press **Start session**. Sift picks 20 songs you rarely play.
+2. Each song plays a short clip. Swipe it, drag it, click the buttons under it or use the arrow keys.
+3. When you're done (or whenever you like), press **Review and delete**, look over the list and confirm.
+
+A few nice touches along the way:
+
+- **Artist spotlight.** Home suggests an artist you hardly ever play, so you can go through all their songs at once.
+- **Artist stop.** Delete three songs by the same artist and Sift offers to go through the rest of theirs.
+- **Pick up later.** Leave in the middle of a session and Home lets you continue where you stopped.
+- **Undo.** Press ⌘Z if you swiped the wrong way.
+
+### Keyboard shortcuts
+
+| Key | Does |
+| --- | --- |
+| ← | Delete (or Keep if you swapped directions in Settings) |
 | → | Keep (or Delete) |
 | ↑ | Second Chance |
-| Space | Replay the clip |
-| S | Skip a song you can't play |
+| Space | Play the clip again |
+| S | Skip a song |
 | ⌘Z | Undo |
 | Return / Esc | Accept or skip an artist stop |
 
-You can also drag the card with the mouse or trackpad, or click the buttons under it.
+### Which songs come up
 
-## How songs are picked
+Songs you've never played, haven't played in a long time, or keep skipping come first. Sift leaves out songs you added in the last 30 days, songs you kept in the last 6 months, and songs already waiting in Second Chance or on the review screen.
 
-Each session shows 20 songs by default (you can change it in Settings) most likely to be clutter. Never-played songs, songs you haven't played in a long time, and often-skipped songs come first. Sift leaves out:
+---
 
-- songs added in the last 30 days
-- songs you kept in the last 6 months
-- songs already in Second Chance or waiting to be deleted
+## Questions
 
-## Artist stop and spotlight
+**Is it safe? Can I lose songs by accident?**
+Swiping never deletes anything by itself. Songs only leave your library after you press **Delete** on the review screen and confirm. There you can also tick a box to save a list of the deleted songs (a spreadsheet file in Documents → Sift Backups), so you can find them again later.
 
-After you delete three songs by one artist in a session, Sift offers to go through the rest of their songs right away, then carries on with your session.
+**Can I undo a delete?**
+Not after confirming. Apple Music has no undo for deleting songs, which is why Sift asks first. If the songs came from Apple Music, you can always search for them and add them again.
 
-The Home screen offers an artist you rarely play, and you can go through all of their songs in one session. Music has no artist pictures, so Sift looks up the photo on Deezer's public search. Only the artist's name is sent, nothing else about your library. Photos are cached in `~/Library/Caches/Sift`, and a letter tile is shown when none is found.
+**What does Sift send over the internet?**
+Only small lookups, never your library: the artist and title to find a song's preview clip and cover on Apple's iTunes search, an artist's name to find their photo on Deezer, and once per launch a check on GitHub for a newer version (you can turn that off in Settings). Offline, Sift still works and just shows placeholders.
 
-## Covers, updates, sound and privacy
+**Does playing clips count as a play?**
+No. Clips are Apple's short previews, so your play counts stay as they are. Songs without a preview play through Music instead.
 
-Sift never uploads your library. It goes online in a few small ways, and only to look things up:
+**How do I update?**
+When there's a new version, Home shows a banner. Download it the same way, drag it into Applications and choose **Replace**. Your progress stays.
 
-- **Artist photos** from Deezer, sending only the artist's name (see above).
-- **Missing album covers** from Apple's public iTunes Search, sending only the artist and song title. Covers are cached in `~/Library/Caches/Sift`.
-- **Clip previews** from the same iTunes Search, sending only the artist and title. A short preview is a file of about 1 MB kept in the caches folder, so it plays at once, nothing is downloaded into your Music library and the songs get no extra plays. Songs without a preview play through Music instead.
-- **Update check**: once per launch Sift asks GitHub for the newest release number and shows a banner when there is one. Turn it off in Settings.
+**How do I remove Sift?**
+Drag Sift from Applications to the Trash. To also remove what it remembers, delete the **Sift** folder in `~/Library/Application Support`.
 
-If you are offline, Sift still works. Covers and photos just show a placeholder.
+**Something isn't working.**
+[Open an issue](../../issues) and describe what happened. A screenshot helps.
 
-Soft sounds on each swipe can be turned off in Settings.
+---
 
-## How it works
+## For developers
 
-Apple doesn't let iPhone or web apps delete songs from your library. The Music app on the Mac can be scripted, though, so Sift talks to it through `osascript` (see `Sources/Sift/Music/Scripts.swift`). That's how it reads play counts, plays clips, manages the Second Chance playlist, and deletes songs.
+Apple doesn't let iPhone or web apps delete songs from your library, but the Music app on the Mac can be scripted. Sift talks to it through `osascript` (see `Sources/Sift/Music/Scripts.swift`) to read play counts, play clips, manage the Second Chance playlist and delete songs. Sift's own memory (kept songs, Second Chance dates) lives in `~/Library/Application Support/Sift/state.json`. Previews, covers and artist photos are cached in `~/Library/Caches/Sift`.
 
-Sift keeps its own memory (kept songs, Second Chance dates) in `~/Library/Application Support/Sift/state.json`.
+### Build and test
 
-## Project layout
+You need Apple's free developer tools: **Xcode** from the App Store, or just the Command Line Tools (`xcode-select --install`).
+
+```bash
+bash scripts/build-app.sh     # builds build/Sift.app
+open build/Sift.app
+bash scripts/test.sh          # runs the tests
+```
+
+To work in Xcode, open `Package.swift` and press Run.
+
+### Publish a release
+
+Push a version tag. GitHub runs the tests, builds the app for Apple Silicon and Intel Macs, and attaches the `.dmg` and `.zip` to a new release:
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+To build the download locally instead, run `VERSION=1.0.1 bash scripts/make-dmg.sh`. The files land in `dist/`.
+
+### Project layout
 
 ```
 Sources/Sift/
   SiftApp.swift          App entry point
-  Music/                 Talking to the Music app
-  Model/                 App state, scoring, saved data
-  Views/                 Screens and components (colours in Theme.swift)
+  Music/                 Talking to the Music app, previews, covers, artist photos
+  Model/                 App state, scoring, saved data, update check
+  Views/                 Screens and components (colours and fonts in Theme.swift)
+Tests/SiftTests/         Tests, plus an optional screen render for checking layouts
 Support/                 Info.plist and app icon
-scripts/build-app.sh     Builds build/Sift.app
-scripts/make-dmg.sh      Builds the downloadable .dmg and .zip into dist/
-scripts/make-icon.sh     Redraws the app icon from Views/LogoDrawing.swift
+scripts/                 Build, test, disk image and icon scripts
 .github/workflows/       Builds a release when you push a version tag
 ```
