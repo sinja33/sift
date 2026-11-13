@@ -123,8 +123,15 @@ box(345, 170, 13, 21, viewBox: single, opacity: 0.4) { singleNote(flag: false) }
 box(362, 163, 13, 21, viewBox: single, opacity: 0.25) { singleNote(flag: true) }
 
 // Arrowhead past the end of the staff.
-box(384, 158, 22, 32, viewBox: CGRect(x: 368, y: 147, width: 42, height: 54), opacity: 0.9) {
-    stroke([CGPoint(x: 373, y: 152), CGPoint(x: 404, y: 173.8), CGPoint(x: 373, y: 195.6)], width: 3, round: true)
+box(388, 160, 18, 27, viewBox: CGRect(x: 368, y: 147, width: 42, height: 54), opacity: 0.9) {
+    stroke([CGPoint(x: 373, y: 152), CGPoint(x: 404, y: 173.8), CGPoint(x: 373, y: 195.6)], width: 4, round: true)
+}
+
+// Finder always draws the icon names in black over a picture, so each name gets a soft light pill behind it.
+// Sized and placed to where Finder puts "Sift" and "Applications" under 112-point icons.
+for pill in [NSRect(x: 154, y: 237.5, width: 42, height: 22), NSRect(x: 416.5, y: 237.5, width: 101, height: 22)] {
+    white.withAlphaComponent(0.9).setFill()
+    NSBezierPath(roundedRect: pill, xRadius: 11, yRadius: 11).fill()
 }
 
 // First-launch hint.

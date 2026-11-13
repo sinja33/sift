@@ -22,5 +22,5 @@ icon_size = 112
 text_size = 14
 icon_locations = {
     "Sift.app": (175, 174),
-    "Applications": (465, 174),
+    "Applications": (467, 174),
 }

@@ -13,11 +13,11 @@ from mac_alias import Bookmark
 
 helper, settings_file, app, output = sys.argv[1:5]
 
-
 def bookmark_for_file(path):
     data = subprocess.run([helper, path], check=True, capture_output=True).stdout
     return Bookmark.from_bytes(data)
 
 
 core.Bookmark.for_file = staticmethod(bookmark_for_file)
+
 core.build_dmg(output, "Sift", settings_file=settings_file, defines={"app": app})
