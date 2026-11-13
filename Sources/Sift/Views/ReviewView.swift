@@ -10,6 +10,12 @@ struct ReviewView: View {
     var body: some View {
         let songs = model.pendingDeleteSongs
         VStack(alignment: .leading, spacing: 20) {
+            Button { model.closeReview() } label: {
+                Label(model.reviewReturnsToSession ? "Back to session" : "Home", systemImage: "chevron.left")
+            }
+            .buttonStyle(.secondary)
+            .keyboardShortcut(.cancelAction)
+
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("READY TO DELETE").font(Theme.mono(12)).tracking(1).foregroundStyle(Theme.muted)
@@ -52,8 +58,6 @@ struct ReviewView: View {
                 Toggle("Save a backup list (CSV) to Documents first", isOn: $backup).pointerCursor()
                     .toggleStyle(.checkbox)
                 Spacer()
-                Button("Not now") { model.screen = .home }
-                    .buttonStyle(.secondary)
                 Button(selected.count == 1 ? "Delete 1 song" : "Delete \(selected.count) songs") { confirming = true }
                     .buttonStyle(.danger)
                     .disabled(selected.isEmpty || working)

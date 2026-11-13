@@ -57,6 +57,7 @@ struct HomeView: View {
             .padding(44)
             .frame(maxWidth: 1100)
             .frame(maxWidth: .infinity)
+            .environment(\.panelButtonIcons, roomy)
             .animation(.smooth(duration: 0.35), value: model.availableUpdate)
         }
         .onAppear { model.ensureSpotlight() }
@@ -167,8 +168,8 @@ struct HomeView: View {
                 description: songs.count > 3 ? "Starting with \(titles) and \(songs.count - 3) more." : "Starting with \(titles).",
                 visual: { ArtistAvatar(artist: artist) },
                 buttons: {
-                    Button("Go through their songs") { model.startArtistSession() }.buttonStyle(.primary)
-                    Button { model.pickSpotlight() } label: { Label("Pick another artist", systemImage: "shuffle") }
+                    Button { model.startArtistSession() } label: { PanelLabel("Go through their songs", icon: "play.fill") }.buttonStyle(.primary)
+                    Button { model.pickSpotlight() } label: { PanelLabel("Pick another artist", icon: "shuffle") }
                         .buttonStyle(.secondary)
                 })
         }
@@ -196,8 +197,8 @@ struct HomeView: View {
             description: "So far: \(saved.count(of: .delete)) to delete, \(saved.count(of: .secondChance)) in Second Chance, \(saved.count(of: .keep)) kept.",
             visual: visual,
             buttons: {
-                Button("Continue") { model.resume(key) }.buttonStyle(.primary)
-                Button("Start over", action: startOver).buttonStyle(.secondary)
+                Button { model.resume(key) } label: { PanelLabel("Continue", icon: "play.fill") }.buttonStyle(.primary)
+                Button(action: startOver) { PanelLabel("Start over", icon: "arrow.counterclockwise") }.buttonStyle(.secondary)
             })
     }
 
@@ -216,7 +217,7 @@ struct HomeView: View {
             description: blurb,
             visual: { CoverMosaic(songs: previewSongs) { SwipeIcon() } },
             buttons: {
-                Button("Start session") { model.startSession() }
+                Button { model.startSession() } label: { PanelLabel("Start session", icon: "play.fill") }
                     .buttonStyle(.primary)
                     .disabled(model.songs.isEmpty)
                 Menu {
@@ -252,14 +253,15 @@ struct HomeView: View {
         let total = model.state.secondChance.count
         let resumed = model.paused[.chance]
         let chanceShown = total > 0 || resumed != nil
-        return HStack(spacing: 16) {
+        return HStack(alignment: .top, spacing: 16) {
             if !pending.isEmpty {
                 QuietStrip(
                     title: pending.count == 1 ? "1 song marked for deletion" : "\(pending.count) songs marked for deletion",
                     detail: "They stay in your library until you confirm",
-                    button: "Review and delete",
+                    button: "Review",
                     visual: { CoverMosaic(songs: pending, size: 40) { DeleteIcon(size: 40) } },
-                    action: { model.screen = .review })
+                    action: { model.openReview() },
+                    clearAction: { model.clearPending() })
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
             if chanceShown {
@@ -271,8 +273,10 @@ struct HomeView: View {
                     action: { if resumed != nil { model.resume(.chance) } else { Task { await model.openSecondChance(all: due == 0) } } })
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
-            if pending.isEmpty != !chanceShown { GapTip(text: pending.isEmpty ? Self.deleteTip : Self.chanceTip) }
+            if pending.isEmpty != !chanceShown { GapTip(text: pending.isEmpty ? Self.deleteTip : Self.chanceTip, tall: true) }
         }
+        // Both strips take the height of the taller one.
+        .fixedSize(horizontal: false, vertical: true)
         .animation(.smooth(duration: 0.4), value: pending.isEmpty)
         .animation(.smooth(duration: 0.4), value: total)
         .environment(\.stackPanelButtons, stackStripButtons)
@@ -299,8 +303,8 @@ struct HomeView: View {
                     description: "They stay in your library until you confirm. Look over the list first, and untick anything you want to keep.",
                     visual: { CoverMosaic(songs: pending) { DeleteIcon() } },
                     buttons: {
-                        Button("Review and delete") { model.screen = .review }.buttonStyle(.secondary)
-                        Button("Clear list") { model.clearPending() }.buttonStyle(.secondary)
+                        Button { model.openReview() } label: { PanelLabel("Review and delete", icon: "trash") }.buttonStyle(.secondary)
+                        Button { model.clearPending() } label: { PanelLabel("Clear list", icon: "xmark") }.buttonStyle(CapsuleButtonStyle(fill: .clear, text: Theme.muted))
                     })
             }
             if chanceShown {
@@ -316,13 +320,13 @@ struct HomeView: View {
                     visual: { CoverMosaic(songs: model.secondChanceRound(all: true).map(\.song)) { SecondChanceIcon() } },
                     buttons: {
                         if resumed != nil {
-                            Button("Continue") { model.resume(.chance) }.buttonStyle(.primary)
-                            Button("Start over") { model.discardPaused(.chance) }.buttonStyle(.secondary)
+                            Button { model.resume(.chance) } label: { PanelLabel("Continue", icon: "play.fill") }.buttonStyle(.primary)
+                            Button { model.discardPaused(.chance) } label: { PanelLabel("Start over", icon: "arrow.counterclockwise") }.buttonStyle(.secondary)
                         } else if due > 0 {
-                            Button("Review round") { Task { await model.openSecondChance() } }.buttonStyle(.primary)
+                            Button { Task { await model.openSecondChance() } } label: { PanelLabel("Review round", icon: "play.fill") }.buttonStyle(.primary)
                         }
                         if resumed == nil && due < total {
-                            Button(due > 0 ? "Go through all \(total)" : "Go through them now") { Task { await model.openSecondChance(all: true) } }
+                            Button { Task { await model.openSecondChance(all: true) } } label: { PanelLabel(due > 0 ? "Go through all \(total)" : "Go through them now", icon: "play.fill") }
                                 .buttonStyle(CapsuleButtonStyle.panel(primary: due == 0))
                         }
                     })
@@ -491,6 +495,34 @@ private struct FeaturePanel<Visual: View, Buttons: View>: View {
     }
 }
 
+/// A panel button's text, with an icon in front when the window is big enough for the full layout.
+private struct PanelLabel: View {
+    let title: String
+    let icon: String
+    @Environment(\.panelButtonIcons) private var showsIcon
+
+    init(_ title: String, icon: String) {
+        self.title = title
+        self.icon = icon
+    }
+
+    var body: some View {
+        if showsIcon { Label(title, systemImage: icon) } else { Text(title) }
+    }
+}
+
+private struct PanelButtonIconsKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Set by Home on wide windows, where the panel buttons have room for icons.
+    fileprivate var panelButtonIcons: Bool {
+        get { self[PanelButtonIconsKey.self] }
+        set { self[PanelButtonIconsKey.self] = newValue }
+    }
+}
+
 /// True when any panel in a row has more buttons than fit on one line.
 private struct PanelButtonsOverflow: PreferenceKey {
     static let defaultValue = false
@@ -516,6 +548,8 @@ private struct QuietStrip<Visual: View>: View {
     let button: String
     @ViewBuilder var visual: Visual
     let action: () -> Void
+    /// When set, a plain "Clear list" button after the main one empties the list.
+    var clearAction: (() -> Void)? = nil
 
     @Environment(\.stackPanelButtons) private var stacked
     /// Below this the title would be cut too short, so the button moves under it.
@@ -525,10 +559,13 @@ private struct QuietStrip<Visual: View>: View {
         HStack(spacing: 14) {
             visual
             if stacked {
+                // The buttons sit at the bottom, like in the panels above, so both strips line up.
                 VStack(alignment: .leading, spacing: 8) {
                     texts
+                    Spacer(minLength: 0)
                     actionButton
                 }
+                .frame(maxHeight: .infinity, alignment: .topLeading)
                 Spacer(minLength: 0)
             } else {
                 texts
@@ -553,7 +590,7 @@ private struct QuietStrip<Visual: View>: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.line))
     }
@@ -566,19 +603,27 @@ private struct QuietStrip<Visual: View>: View {
     }
 
     private var actionButton: some View {
-        Button(button, action: action).buttonStyle(QuietButtonStyle()).lineLimit(1).fixedSize()
+        HStack(spacing: 8) {
+            Button(button, action: action).buttonStyle(QuietButtonStyle()).lineLimit(1).fixedSize()
+            if let clearAction {
+                Button("Clear list", action: clearAction).buttonStyle(QuietButtonStyle(fill: .clear, text: Theme.muted)).lineLimit(1).fixedSize()
+            }
+        }
     }
 }
 
 /// The same grey as the secondary buttons in the big panels, just smaller.
 private struct QuietButtonStyle: ButtonStyle {
+    var fill: Color = Theme.surface2
+    var text: Color = Theme.ink
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, weight: .semibold))
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
-            .foregroundStyle(Theme.ink)
-            .background(Theme.surface2, in: Capsule())
+            .foregroundStyle(text)
+            .background(fill, in: Capsule())
             .opacity(configuration.isPressed ? 0.8 : 1)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.smooth(duration: 0.15), value: configuration.isPressed)

@@ -21,6 +21,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         if Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") == nil { setDevIcon() }
+        // The very first time, open big enough for the full layout (side panels from 1100 wide). After that macOS
+        // remembers whatever size the window was left at.
+        if UserDefaults.standard.string(forKey: "NSWindow Frame main") == nil {
+            DispatchQueue.main.async { Self.applyDefaultSize() }
+        }
+    }
+
+    /// 1200 × 800, or as much of that as fits on the screen, centred.
+    @MainActor private static func applyDefaultSize() {
+        guard let window = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
+              let screen = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+        let size = NSSize(width: min(1200, screen.width - 40), height: min(800, screen.height - 40))
+        window.setContentSize(size)
+        window.center()
     }
 
     /// Draws the Dock icon for runs without a bundle; the built app ships Support/AppIcon.icns.

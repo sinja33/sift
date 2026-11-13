@@ -9,8 +9,10 @@ symlinks = {"Applications": "/Applications"}
 icon = "Support/AppIcon.icns"
 background = "Support/dmg-background.tiff"
 
-# The size includes the title bar (about 28 points), so the area under it matches the 640 × 337 design.
-window_rect = ((200, 140), (640, 365))
+# The size includes the title bar, which is 28 to 32 points tall depending on the macOS version. 20 points of
+# spare room at the bottom keep the first-launch hint visible on every Mac; the picture continues the gradient
+# well past the window, so any extra room shows as blue, not white.
+window_rect = ((200, 140), (640, 389))
 default_view = "icon-view"
 show_status_bar = False
 show_tab_view = False

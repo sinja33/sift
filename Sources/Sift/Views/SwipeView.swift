@@ -23,10 +23,10 @@ struct SwipeView: View {
             let availableHeight = geo.size.height - 64 - 24 - 80 - 22 - 56
             let scale = min(large ? 1.7 : 1.5, max(0.7, min(availableWidth / cardWidth, availableHeight / cardHeight)))
             VStack(spacing: 0) {
-                header(compact: !wide)
+                header(compact: !wide, showsTrash: !large)
                 progressBar
                 HStack(alignment: .top, spacing: 28) {
-                    if large { sidebar(showsReady: false).frame(width: columnWidth) }
+                    if large { sidebar.frame(width: columnWidth) }
                     VStack(spacing: 22) {
                         if let stop = model.artistStop {
                             artistStopCard(stop)
@@ -44,7 +44,7 @@ struct SwipeView: View {
                     }
                     .frame(maxWidth: .infinity)
 
-                    if large { upNext.frame(width: columnWidth) } else if wide { sidebar(showsReady: true).frame(width: sidebarWidth) }
+                    if large { upNext.frame(width: columnWidth) } else if wide { sidebar.frame(width: sidebarWidth) }
                 }
                 .padding(40)
                 Spacer(minLength: 0)
@@ -70,7 +70,7 @@ struct SwipeView: View {
         .onPreferenceChange(CardHeightKey.self) { if $0 > 0 { cardHeight = $0 } }
     }
 
-    private func header(compact: Bool) -> some View {
+    private func header(compact: Bool, showsTrash: Bool) -> some View {
         HStack {
             Button { model.endSession() } label: { Label("Home", systemImage: "chevron.left") }
                 .buttonStyle(.secondary)
@@ -89,8 +89,8 @@ struct SwipeView: View {
                     Pill("\(model.count(of: .keep))", decision: .keep)
                 }
             }
-            if compact && !model.state.pendingDelete.isEmpty {
-                // Narrow windows have no side panels, so the way to the review sits up here.
+            if showsTrash && !model.state.pendingDelete.isEmpty {
+                // Only the largest windows show the ready-to-delete panel, so the way to the review sits up here.
                 Button { model.openReview() } label: {
                     Label("\(model.state.pendingDelete.count)", systemImage: "trash")
                 }
@@ -112,7 +112,7 @@ struct SwipeView: View {
                 .disabled(model.history.isEmpty || model.artistStop != nil)
                 .opacity(model.history.isEmpty || model.artistStop != nil ? 0.4 : 1)
                 .help("Undo (⌘Z)")
-                .padding(.leading, compact ? 8 : 0)
+                .padding(.leading, 8)
             }
             if !model.queue.isEmpty {
                 Text("\(min(model.index + 1, model.queue.count)) of \(model.queue.count)")
@@ -190,8 +190,9 @@ struct SwipeView: View {
         .shadow(color: .black.opacity(0.10), radius: 16, y: 8)
     }
 
-    /// On the largest windows the ready-to-delete panel sits in the right column instead.
-    private func sidebar(showsReady: Bool) -> some View {
+    /// Session stats, the clip switch and the keys. The ready-to-delete panel only appears on the largest windows,
+    /// under Up next; smaller windows reach the review from the trash button in the header.
+    private var sidebar: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(model.sessionKind == .secondChance ? "This round" : "This session").font(.headline)
@@ -201,8 +202,6 @@ struct SwipeView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .panel()
-
-            if showsReady { readyToDelete }
 
             Toggle("Play clips", isOn: Binding(get: { model.clipsEnabled }, set: { model.setClipsEnabled($0) }))
                 .toggleStyle(.switch)
@@ -509,7 +508,7 @@ private struct SessionDoneView: View {
                     Button("Apply choices") { Task { await model.finishSecondChanceRound() } }.buttonStyle(.primary)
                 } else {
                     if !model.state.pendingDelete.isEmpty {
-                        Button("Review and delete") { model.stopClip(); model.screen = .review }.buttonStyle(.secondary)
+                        Button("Review and delete") { model.openReview() }.buttonStyle(.secondary)
                     }
                     Button("Another session") { model.startSession() }.buttonStyle(.primary)
                 }

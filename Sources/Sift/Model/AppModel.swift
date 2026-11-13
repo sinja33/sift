@@ -384,12 +384,28 @@ final class AppModel {
 
     func discardPaused(_ key: PauseKey) { paused[key] = nil }
 
-    /// Opens the review screen from the middle of a session. The session is kept, so Home can pick it up again.
+    /// True when the review screen was opened from a session, so its back button returns there instead of Home.
+    private(set) var reviewReturnsToSession = false
+
+    /// Opens the review screen, from Home or the middle of a session. A session is kept, so you can go back to it.
     func openReview() {
+        reviewReturnsToSession = screen == .session
         stopClip()
         pauseIfUnfinished()
         artistStop = nil
         screen = .review
+    }
+
+    /// Leaves the review screen for wherever it was opened from.
+    func closeReview() {
+        guard reviewReturnsToSession else { screen = .home; return }
+        reviewReturnsToSession = false
+        if paused[currentPauseKey] != nil {
+            resume(currentPauseKey)
+        } else {
+            screen = .session
+            playClipForCurrent()
+        }
     }
 
     // MARK: Artist spotlight

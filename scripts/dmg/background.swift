@@ -5,9 +5,9 @@
 // Run by scripts/make-dmg-background.sh:   swift background.swift <output.png> <scale>
 import AppKit
 
-/// The design is 640 × 337. The picture runs a little taller, continuing the gradient, so a taller title bar
-/// on some Macs never leaves a gap at the bottom of the window.
-let width: CGFloat = 640, designHeight: CGFloat = 337, height: CGFloat = 365
+/// The design is 640 × 337. The picture runs much wider and taller, continuing the gradient, so a Mac that opens
+/// the window bigger (other title bar height, older Finder, a resized window) shows more blue, never white.
+let width: CGFloat = 1200, designHeight: CGFloat = 337, height: CGFloat = 800
 
 let args = CommandLine.arguments
 let out = URL(fileURLWithPath: args[1])
