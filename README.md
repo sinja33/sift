@@ -30,20 +30,25 @@ Go to the **[download page](../../releases/latest)** and click **Sift-1.0.0.dmg*
 
 ### 2. Install it
 
-Double-click the file you downloaded. A small window opens with the Sift icon and an Applications folder. **Drag Sift onto the Applications folder.** That's it. You can close the window.
+Double-click the file you downloaded. A window opens showing Sift, an arrow and your Applications folder. **Drag Sift onto the Applications folder.** That's it, you can close the window.
+
+> Don't open Sift straight from that window. Drag it into Applications first, otherwise your Mac may not let you approve it in the next step.
 
 ### 3. Open it the first time
 
 Open your **Applications** folder and double-click **Sift**.
 
-The first time, your Mac shows a warning that it **"could not verify Sift is free of malware"**. Don't worry: you see this with any free app made by someone who doesn't pay Apple's yearly developer fee. To open it anyway:
+The first time, your Mac shows a warning: **"Apple could not verify Sift is free of malware"**. Don't worry. You see this with any free app made by someone who doesn't pay Apple's yearly developer fee. To open it anyway:
 
-1. Click **Done** (not "Move to Trash").
-2. Open the Apple menu  → **System Settings** → **Privacy & Security**.
-3. Scroll down until you see **"Sift was blocked to protect your Mac"** and click **Open Anyway**.
-4. Enter your Mac password if it asks, then click **Open Anyway** once more.
+1. Click **Done**, the grey button. Don't click the blue **Move to Trash**.
+2. **Nothing else happens yet, and that's normal.** "Done" only closes the warning. The next step is in System Settings.
+3. Open the Apple menu  → **System Settings** → **Privacy & Security**.
+4. Scroll all the way down to the **Security** section. You'll see **"Sift" was blocked to protect your Mac**. Click **Open Anyway** next to it.
+5. Enter your Mac password (or use Touch ID), then click **Open Anyway** once more. Sift opens.
 
-You only ever do this once.
+You only ever do this once. After that Sift opens like any other app.
+
+> **Don't see "Open Anyway"?** Your Mac only shows it for a little while after a blocked attempt. Double-click Sift in Applications again, click **Done**, and go back to Privacy & Security.
 
 > On **macOS 14 (Sonoma)** it's quicker: in Applications, **right-click** Sift, choose **Open**, then click **Open**.
 
@@ -108,48 +113,22 @@ When there's a new version, Home shows a banner. Download it the same way, drag 
 **How do I remove Sift?**
 Drag Sift from Applications to the Trash. To also remove what it remembers, delete the **Sift** folder in `~/Library/Application Support`.
 
-**Something isn't working.**
-[Open an issue](../../issues) and describe what happened. A screenshot helps.
-
 ---
 
-## For developers
+## Coming in Sift 2.0
 
-Apple doesn't let iPhone or web apps delete songs from your library, but the Music app on the Mac can be scripted. Sift talks to it through `osascript` (see `Sources/Sift/Music/Scripts.swift`) to read play counts, play clips, manage the Second Chance playlist and delete songs. Sift's own memory (kept songs, Second Chance dates) lives in `~/Library/Application Support/Sift/state.json`. Previews, covers and artist photos are cached in `~/Library/Caches/Sift`.
+So far Sift helps you clear out what you don't listen to. Version 2.0 is about finding what you will:
 
-### Build and test
+- **Recommended for you.** Sift suggests new songs that fit your taste, based on what you actually play. Each one plays a clip, and you swipe: **right** to add it to your library, **left** to pass.
 
-You need Apple's free developer tools: **Xcode** from the App Store, or just the Command Line Tools (`xcode-select --install`).
+Want something else in Sift? Suggest it, see the next section.
 
-```bash
-bash scripts/build-app.sh     # builds build/Sift.app
-open build/Sift.app
-bash scripts/test.sh          # runs the tests
-```
+## Ideas and bugs
 
-To work in Xcode, open `Package.swift` and press Run.
+Sift is made by one person, and your feedback shapes what comes next.
 
-### Publish a release
+- **Found a bug?** [Report it here](../../issues/new). Say what you did, what you expected and what happened instead. A screenshot helps a lot.
+- **Have an idea or a wish?** [Suggest it here](../../issues/new) too. Small things are welcome, like a setting you're missing or something that felt confusing.
+- **Already reported?** Have a look at the [open issues](../../issues) and add a 👍 or a comment to the ones you care about.
 
-Push a version tag. GitHub runs the tests, builds the app for Apple Silicon and Intel Macs, and attaches the `.dmg` and `.zip` to a new release:
-
-```bash
-git tag v1.0.1
-git push origin v1.0.1
-```
-
-To build the download locally instead, run `VERSION=1.0.1 bash scripts/make-dmg.sh`. The files land in `dist/`.
-
-### Project layout
-
-```
-Sources/Sift/
-  SiftApp.swift          App entry point
-  Music/                 Talking to the Music app, previews, covers, artist photos
-  Model/                 App state, scoring, saved data, update check
-  Views/                 Screens and components (colours and fonts in Theme.swift)
-Tests/SiftTests/         Tests, plus an optional screen render for checking layouts
-Support/                 Info.plist and app icon
-scripts/                 Build, test, disk image and icon scripts
-.github/workflows/       Builds a release when you push a version tag
-```
+You'll need a free GitHub account to post.
