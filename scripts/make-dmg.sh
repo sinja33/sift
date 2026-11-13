@@ -10,15 +10,17 @@ export VERSION
 UNIVERSAL=1 scripts/build-app.sh
 
 # dmgbuild lays out the window without driving Finder, so it also works on build servers.
-VENV=".build/dmgbuild-venv"
+VENV=".build/dmgbuild-1.6.5"
 if [ ! -x "$VENV/bin/dmgbuild" ]; then
   python3 -m venv "$VENV"
-  "$VENV/bin/pip" install --quiet --disable-pip-version-check "dmgbuild==1.6.1"
+  "$VENV/bin/pip" install --quiet --disable-pip-version-check "dmgbuild==1.6.5"
 fi
 
 mkdir -p dist
 rm -f "dist/Sift-$VERSION.dmg" "dist/Sift-$VERSION.zip"
-"$VENV/bin/dmgbuild" -s scripts/dmg/dmg-settings.py -D app=build/Sift.app "Sift" "dist/Sift-$VERSION.dmg"
+# A small helper makes the background's file link with macOS's own API (see scripts/dmg/build-dmg.py).
+swiftc -O -o .build/dmg-bookmark scripts/dmg/bookmark.swift
+"$VENV/bin/python" scripts/dmg/build-dmg.py .build/dmg-bookmark scripts/dmg/dmg-settings.py build/Sift.app "dist/Sift-$VERSION.dmg"
 ditto -c -k --keepParent build/Sift.app "dist/Sift-$VERSION.zip"
 
 echo "Wrote dist/Sift-$VERSION.dmg and dist/Sift-$VERSION.zip"
