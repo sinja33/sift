@@ -75,12 +75,15 @@ struct HomeView: View {
             Mascot(mood: .wow, size: 44)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Sift \(release.version) is out").font(.headline)
-                Text(UpdateCheck.installed.map { "You have \($0). The new version is a free download." } ?? "The new version is a free download.")
+                Text(UpdateCheck.installed.map { "You have \($0). Updating takes a few seconds and keeps your progress." } ?? "The new version is a free download.")
                     .font(.system(size: 13)).foregroundStyle(Theme.muted)
             }
             Spacer()
             Button("Later") { model.dismissUpdate() }.buttonStyle(.secondary)
-            Button("Download") { NSWorkspace.shared.open(release.url) }.buttonStyle(.primary)
+            Button(AppUpdater.isAvailable ? "Update" : "Download") {
+                if AppUpdater.isAvailable { AppUpdater.checkForUpdates() } else { NSWorkspace.shared.open(release.url) }
+            }
+            .buttonStyle(.primary)
         }
         .panel(padding: 16)
     }

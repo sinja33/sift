@@ -17,10 +17,17 @@ if [ "${UNIVERSAL:-0}" = "1" ]; then
     "$(swift build -c release --arch arm64 --show-bin-path)/Sift" \
     "$(swift build -c release --arch x86_64 --show-bin-path)/Sift" \
     -output "$APP/Contents/MacOS/Sift"
+  BIN="$(swift build -c release --arch arm64 --show-bin-path)"
 else
   swift build -c release
-  cp "$(swift build -c release --show-bin-path)/Sift" "$APP/Contents/MacOS/Sift"
+  BIN="$(swift build -c release --show-bin-path)"
+  cp "$BIN/Sift" "$APP/Contents/MacOS/Sift"
 fi
+
+# Sparkle, which installs updates from inside the app. SwiftPM leaves the framework (built for both chips)
+# next to the binary.
+mkdir -p "$APP/Contents/Frameworks"
+ditto "$BIN/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 
 cp Support/Info.plist "$APP/Contents/Info.plist"
 cp Support/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
@@ -30,7 +37,8 @@ if [ -n "${VERSION:-}" ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${BUILD_NUMBER:-$VERSION}" "$APP/Contents/Info.plist"
 fi
 
-# Ad-hoc signature so macOS can remember the Music permission.
+# Ad-hoc signatures so macOS can remember the Music permission: Sparkle's helpers first, then the app.
+codesign --force --deep --sign - "$APP/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - "$APP"
 
 echo "Built $APP"

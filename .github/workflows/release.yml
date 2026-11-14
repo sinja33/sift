@@ -17,6 +17,10 @@ jobs:
         run: scripts/test.sh
       - name: Build the app and disk image
         run: VERSION="${GITHUB_REF_NAME#v}" scripts/make-dmg.sh
+      - name: Sign the update for the in-app updater
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: VERSION="${GITHUB_REF_NAME#v}" scripts/make-appcast.sh
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}

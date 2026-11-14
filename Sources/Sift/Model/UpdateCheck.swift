@@ -7,7 +7,9 @@ enum UpdateCheck {
         let url: URL
     }
 
-    private static let endpoint = URL(string: "https://api.github.com/repos/sinja33/sift/releases/latest")!
+    /// GitHub's latest release. scripts/try-update.sh points a test copy at a local file instead, through SIFT_RELEASES_URL.
+    private static let endpoint = ProcessInfo.processInfo.environment["SIFT_RELEASES_URL"].flatMap(URL.init(string:))
+        ?? URL(string: "https://api.github.com/repos/sinja33/sift/releases/latest")!
 
     /// The version of the running app. Nil when running outside a built app (e.g. `swift run`).
     static var installed: String? {
@@ -17,7 +19,8 @@ enum UpdateCheck {
     /// The newest release when it is newer than the installed version.
     static func newerRelease() async -> Release? {
         guard let installed else { return nil }
-        var request = URLRequest(url: endpoint, timeoutInterval: 8)
+        // Always ask fresh: a cached answer can come back as "not modified" with no release in it.
+        var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200,

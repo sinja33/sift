@@ -12,6 +12,12 @@ struct SiftApp: App {
                 .environment(model)
         }
         .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { AppUpdater.checkForUpdates() }
+                    .disabled(!AppUpdater.isAvailable)
+            }
+        }
     }
 }
 
